@@ -119,7 +119,7 @@ class ReportApiTest extends WebTestBase {
     @Test
     @DisplayName("공개 검증은 로그인 없이 등급·시점·지문·서명 시각만 주고, 서명·사진·렌탈 ID는 없다")
     void publicVerifyHasNoDetails() throws Exception {
-        String token = "0123456789abcdef0123456789abcdef";
+        String token = "ab".repeat(16);
         when(queries.verify(token)).thenReturn(Optional.of(new ReportQueryService.Verification(true, List.of(record()), AT)));
         mvc.perform(get("/api/v1/verify/" + token))
                 .andExpect(status().isOk())
