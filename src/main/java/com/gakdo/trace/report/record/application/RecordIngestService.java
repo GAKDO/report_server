@@ -150,7 +150,9 @@ public class RecordIngestService {
         return true;
     }
 
+    /** 렌탈 줄을 먼저 잠그고 읽는다(봉인·다른 이벤트와 같은 순서). */
     private CheckpointView view(Envelope env) {
+        seals.lockRental(env.rentalId());
         CheckpointView view = views.findByCheckpointId(env.checkpointId())
                 .orElseGet(() -> views.save(new CheckpointView(env.rentalId(), env.checkpointId())));
         if (!view.rentalId().equals(env.rentalId())) {
