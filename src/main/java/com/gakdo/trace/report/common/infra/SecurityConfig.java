@@ -23,6 +23,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.gakdo.trace.report.common.api.ProblemFactory;
 import com.gakdo.trace.report.common.domain.ErrorCode;
 
+import jakarta.servlet.DispatcherType;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
@@ -41,13 +42,16 @@ public class SecurityConfig {
         http.csrf(csrf -> csrf.disable())
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
+                        // SSE가 끝날 때 오는 비동기 재디스패치는 처음 요청에서 이미 검사했다
+                        .dispatcherTypeMatchers(DispatcherType.ASYNC).permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/reports/ping", "/api/v1/verify/*").permitAll()
                         .requestMatchers("/actuator/health/**", "/actuator/health", "/actuator/info").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/reports/rentals/*/chain", "/api/v1/reports/manual-seals")
                         .hasRole(ADMIN)
                         .requestMatchers(HttpMethod.POST, "/api/v1/reports/rentals/*/checkpoints/*/seal").hasRole(ADMIN)
                         .requestMatchers(HttpMethod.GET, "/api/v1/reports/rentals/*").hasAnyRole(ADMIN, CUSTOMER)
-                        // 진행률 SSE(RP2)·검색(선택)은 아직 없다
+                        .requestMatchers(HttpMethod.GET, "/api/v1/reports/rentals/*/stream").hasAnyRole(ADMIN, CUSTOMER)
+                        // 검색(선택)은 아직 없다
                         .anyRequest().denyAll())
                 .oauth2ResourceServer(o -> o
                         .jwt(jwt -> jwt.jwtAuthenticationConverter(roleConverter()))

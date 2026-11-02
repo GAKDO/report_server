@@ -105,4 +105,15 @@ class RecordEventListenerTest {
         verify(ingest).started(any(), eq(
                 new RecordIngestService.Started(device, "TEST-SERIAL-1", "MBA13-M2", "MacBook Air (M2, 2022)")));
     }
+
+    @Test
+    @DisplayName("검사 완료 이벤트는 진행률용으로 봉투(렌탈·시점·시각)만 읽고, 결과 본문은 보지 않는다")
+    void inspectCompletedReadsEnvelopeOnly() {
+        when(ingest.inspected(any())).thenReturn(true);
+        boolean done = listener.handle("trace.inspect.completed", envelope("1.0") + ",\"captureSetId\":\""
+                + PublicIds.next() + "\",\"modelVersion\":\"yolo11-seg-v1\",\"alignments\":[],\"defects\":[]"
+                + ",\"textureKeys\":{}}");
+        assertThat(done).isTrue();
+        verify(ingest).inspected(any());
+    }
 }

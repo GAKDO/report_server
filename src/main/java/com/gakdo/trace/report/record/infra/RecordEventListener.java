@@ -27,7 +27,7 @@ import com.gakdo.trace.report.record.domain.PhotoRef;
 import com.gakdo.trace.report.record.domain.Pin;
 
 /**
- * trace.report.updates의 이벤트 4종을 읽는다. 필요한 필드만 읽고 모르는 필드는 무시한다(너그러운 소비자, 부 버전 대비).
+ * trace.report.updates의 이벤트 5종을 읽는다(검사 완료는 진행률용으로 봉투만). 필요한 필드만 읽고 모르는 필드는 무시한다(너그러운 소비자, 부 버전 대비).
  * 형식이 깨진 메시지는 다시 해도 소용없어 바로 trace.dlx로 보낸다.
  */
 @Component
@@ -66,6 +66,7 @@ public class RecordEventListener {
             case AmqpConfig.CHECKPOINT_STARTED -> ingest.started(envelope(routingKey, event),
                     new RecordIngestService.Started(publicId(event, "deviceId"), text(event, "serial", 64),
                             text(event, "modelCode", 64), text(event, "modelName", 128)));
+            case AmqpConfig.INSPECT_COMPLETED -> ingest.inspected(envelope(routingKey, event));
             default -> {
                 log.warn("받지 않는 라우팅 키를 건너뜁니다: {}", routingKey);
                 yield false;

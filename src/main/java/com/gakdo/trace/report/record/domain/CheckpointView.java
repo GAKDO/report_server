@@ -98,6 +98,9 @@ public class CheckpointView {
     @Column(name = "diag_max_capacity_pct")
     private Double diagMaxCapacityPct;
 
+    @Column(name = "inspected_at")
+    private OffsetDateTime inspectedAt;
+
     @Column(name = "sealed_at")
     private OffsetDateTime sealedAt;
 
@@ -151,6 +154,14 @@ public class CheckpointView {
         chainPhotos = new ArrayList<>(chainMaterial);
         gradedAt = Times.utc(at);
         status = status.advanceTo(CheckpointStatus.GRADED);
+    }
+
+    /** 검사(정합·흠집 탐지)가 끝난 시각(RP2 진행률). 처음 받은 시각만 둔다. */
+    public void recordInspected(OffsetDateTime at) {
+        if (isSealed() || inspectedAt != null) {
+            return;
+        }
+        inspectedAt = Times.utc(at);
     }
 
     /** 핀은 등급과 함께 오지만 체인 재료가 아니라 따로 받는다. 봉인 뒤에는 등급처럼 바꾸지 않는다. */
@@ -212,5 +223,6 @@ public class CheckpointView {
     public String diagRunId() { return diagRunId; }
     public String diagSha256() { return diagSha256; }
     public List<String> diagFlags() { return List.copyOf(diagFlags); }
+    public OffsetDateTime inspectedAt() { return inspectedAt; }
     public OffsetDateTime sealedAt() { return sealedAt; }
 }

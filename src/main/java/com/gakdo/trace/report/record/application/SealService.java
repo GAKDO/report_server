@@ -18,6 +18,9 @@ import com.gakdo.trace.report.common.domain.DomainException;
 import com.gakdo.trace.report.common.domain.ErrorCode;
 import com.gakdo.trace.report.common.infra.PublicIds;
 import com.gakdo.trace.report.common.infra.Times;
+import com.gakdo.trace.report.progress.application.ProgressNotifier;
+import com.gakdo.trace.report.progress.domain.ProgressStage;
+import com.gakdo.trace.report.progress.domain.ProgressUpdate;
 import com.gakdo.trace.report.record.domain.CanonicalJson;
 import com.gakdo.trace.report.record.domain.ChainHashes;
 import com.gakdo.trace.report.record.domain.ChainRecord;
@@ -49,12 +52,15 @@ public class SealService {
     private final ManualSealLogRepository manualLogs;
     private final ChainSigner signer;
     private final SealedEventPublisher publisher;
+    private final ProgressNotifier progress;
     private final ChainVerifier verifier;
     private final Duration diagnosticsWait;
 
     public SealService(CheckpointViewRepository views, ChainRecordRepository chain, RentalReportRepository reports,
             ManualSealLogRepository manualLogs, ChainSigner signer, SealedEventPublisher publisher,
-            ChainVerifier verifier, @Value("${app.chain.diagnostics-wait:PT1M}") Duration diagnosticsWait) {
+            ChainVerifier verifier, ProgressNotifier progress,
+            @Value("${app.chain.diagnostics-wait:PT1M}") Duration diagnosticsWait) {
+        this.progress = progress;
         this.views = views;
         this.chain = chain;
         this.reports = reports;
@@ -156,7 +162,9 @@ public class SealService {
         ChainRecord record = chain.save(new ChainRecord(view.rentalId(), view.checkpointId(), type, seq, grade,
                 CanonicalJson.write(payload), payloadHash, prevHash, recordHash, signer.sign(recordHash), signedAt,
                 manual != null));
+        Optional<ProgressStage> before = ProgressUpdate.stageOf(view);
         view.markSealed(signedAt);
+        progress.changed(view, before);
         String eventId = PublicIds.next();
         publisher.publish(eventId, sealedEvent(eventId, record));
         verifier.invalidate(view.rentalId());
