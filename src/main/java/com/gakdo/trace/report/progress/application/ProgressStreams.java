@@ -56,26 +56,39 @@ public class ProgressStreams {
     public SseEmitter open(String rentalId, String checkpointScope) {
         SseEmitter emitter = new SseEmitter(timeout.toMillis());
         Subscriber subscriber = new Subscriber(emitter, checkpointScope);
-        Set<Subscriber> set = byRental.computeIfAbsent(rentalId, k -> new CopyOnWriteArraySet<>());
-        set.add(subscriber);
+        // 등록은 키 단위로 원자적으로(마지막 연결의 remove와 겹쳐도 맵에서 떨어진 집합에 들어가지 않게)
+        Set<Subscriber> set = byRental.compute(rentalId, (k, existing) -> {
+            Set<Subscriber> target = existing == null ? new CopyOnWriteArraySet<>() : existing;
+            target.add(subscriber);
+            return target;
+        });
         Runnable remove = () -> remove(rentalId, subscriber);
         emitter.onCompletion(remove);
         emitter.onTimeout(remove);
         emitter.onError(e -> remove.run());
-        views.findByRentalIdOrderByIdAsc(rentalId).stream()
-                .map(ProgressUpdate::of)
-                .flatMap(java.util.Optional::stream)
-                .filter(subscriber::wants)
-                .forEach(update -> send(rentalId, subscriber, update));
+        // 스냅샷을 다 보낼 때까지 실시간 알림을 막아, 늦은 스냅샷이 단계를 뒤로 돌리지 않게 한다
+        synchronized (set) {
+            views.findByRentalIdOrderByIdAsc(rentalId).stream()
+                    .map(ProgressUpdate::of)
+                    .flatMap(java.util.Optional::stream)
+                    .filter(subscriber::wants)
+                    .forEach(update -> send(rentalId, subscriber, update));
+        }
         return emitter;
     }
 
     /** 읽기 모델 트랜잭션이 커밋된 뒤에만 보낸다(롤백된 단계가 화면에 보이지 않게). */
     @TransactionalEventListener(fallbackExecution = true)
     public void onUpdate(ProgressUpdate update) {
-        for (Subscriber subscriber : byRental.getOrDefault(update.rentalId(), Set.of())) {
-            if (subscriber.wants(update)) {
-                send(update.rentalId(), subscriber, update);
+        Set<Subscriber> set = byRental.get(update.rentalId());
+        if (set == null) {
+            return;
+        }
+        synchronized (set) {
+            for (Subscriber subscriber : set) {
+                if (subscriber.wants(update)) {
+                    send(update.rentalId(), subscriber, update);
+                }
             }
         }
     }
