@@ -64,6 +64,17 @@ class RecordEventListenerTest {
     }
 
     @Test
+    @DisplayName("pins가 배열이 아니거나 기종 이름이 128자를 넘으면 거절한다")
+    void malformedOptionalFieldsAreRejected() {
+        assertThatThrownBy(() -> listener.handle("trace.checkpoint.graded", graded("1.1", ",\"pins\":{}")))
+                .isInstanceOf(AmqpRejectAndDontRequeueException.class);
+        assertThatThrownBy(() -> listener.handle("trace.checkpoint.started", envelope("1.1")
+                + ",\"checkpointType\":\"OUT\",\"deviceId\":\"" + PublicIds.next() + "\",\"serial\":\"S1\""
+                + ",\"modelCode\":\"MBA13-M2\",\"modelName\":\"" + "a".repeat(129) + "\"}"))
+                .isInstanceOf(AmqpRejectAndDontRequeueException.class);
+    }
+
+    @Test
     @DisplayName("진단 이벤트의 배터리 최대 용량은 있으면 숫자로, 없거나 null이면 null로 받고, 범위 밖이면 거절한다")
     void maxCapacityPctIsOptional() {
         when(ingest.diagnostics(any(), any())).thenReturn(true);

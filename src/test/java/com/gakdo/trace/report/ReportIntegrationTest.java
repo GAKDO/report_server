@@ -123,7 +123,7 @@ class ReportIntegrationTest {
         List<String[]> outPhotos = uploadPhotos(rental, out, 2);
         String pinId = PublicIds.next();
         String gradedOut = envelope11(rental, out) + gradedBody("OUT", "A", outPhotos)
-                + ",\"pins\":[{\"defectId\":\"" + pinId + "\",\"face\":\"TOP\",\"x\":812.5,\"y\":403.0,\"isNew\":false}]";
+                + ",\"pins\":[{\"defectId\":\"" + pinId + "\",\"face\":\"TOP\",\"x\":812.5,\"y\":403.0,\"isNew\":true}]";
         send("trace.checkpoint.graded", gradedOut);
         JsonNode sealed1 = receiveSealed();
         assertThat(sealed1.path("seq").asInt()).isEqualTo(1);
@@ -143,6 +143,7 @@ class ReportIntegrationTest {
         assertThat(outView.path("pins")).hasSize(1);
         assertThat(outView.path("pins").get(0).path("defectId").asText()).isEqualTo(pinId);
         assertThat(outView.path("pins").get(0).path("x").asDouble()).isEqualTo(812.5);
+        assertThat(outView.path("pins").get(0).path("isNew").asBoolean()).isTrue();
         assertThat(outView.path("diagnosticsSummary").path("maxCapacityPct").asDouble()).isEqualTo(91.2);
         String verifyUrl = timeline.path("verifyUrl").asText();
         assertThat(verifyUrl).matches("https://gakdo\\.site/verify/[0-9a-f]{32}");

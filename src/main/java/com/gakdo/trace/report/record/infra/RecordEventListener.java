@@ -64,8 +64,8 @@ public class RecordEventListener {
                     new RecordIngestService.Diagnostics(publicId(event, "runId"), sha256(event, "sha256"),
                             flagKinds(event), maxCapacityPct(event)));
             case AmqpConfig.CHECKPOINT_STARTED -> ingest.started(envelope(routingKey, event),
-                    new RecordIngestService.Started(publicId(event, "deviceId"), text(event, "serial"),
-                            text(event, "modelCode"), text(event, "modelName")));
+                    new RecordIngestService.Started(publicId(event, "deviceId"), text(event, "serial", 64),
+                            text(event, "modelCode", 64), text(event, "modelName", 128)));
             default -> {
                 log.warn("받지 않는 라우팅 키를 건너뜁니다: {}", routingKey);
                 yield false;
@@ -101,7 +101,14 @@ public class RecordEventListener {
     /** 1.1 선택 필드. 없으면(1.0) 빈 배열 */
     private static List<Pin> pins(JsonNode event) {
         List<Pin> pins = new ArrayList<>();
-        for (JsonNode p : event.path("pins")) {
+        JsonNode array = event.path("pins");
+        if (array.isMissingNode() || array.isNull()) {
+            return pins;
+        }
+        if (!array.isArray()) {
+            throw reject("pins가 배열이 아닙니다");
+        }
+        for (JsonNode p : array) {
             double x = number(p, "x");
             double y = number(p, "y");
             if (x < 0 || y < 0) {
@@ -188,6 +195,15 @@ public class RecordEventListener {
         String value = node.path(field).asText(null);
         if (value == null || value.isBlank()) {
             throw reject(field + "가 비어 있습니다");
+        }
+        return value;
+    }
+
+    /** 저장 열 길이(V3)를 넘는 값은 다시 해도 실패하므로 바로 거절한다. */
+    private static String text(JsonNode node, String field, int maxLength) {
+        String value = text(node, field);
+        if (value.length() > maxLength) {
+            throw reject(field + "가 " + maxLength + "자를 넘습니다");
         }
         return value;
     }
