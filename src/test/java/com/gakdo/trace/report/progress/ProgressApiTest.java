@@ -110,4 +110,17 @@ class ProgressApiTest extends WebTestBase {
         mvc.perform(get("/api/v1/reports/rentals/" + RENTAL + "/stream").with(booth())).andExpect(status().isForbidden());
         mvc.perform(get("/api/v1/reports/rentals/" + RENTAL + "/stream")).andExpect(status().isUnauthorized());
     }
+
+    @Test
+    @DisplayName("이미 보낸 단계보다 앞선 알림이 늦게 와도 보내지 않는다: done 뒤에 GRADED 80%가 다시 보이지 않는다")
+    void staleUpdatesAreDropped() throws Exception {
+        when(views.findByRentalIdOrderByIdAsc(RENTAL)).thenReturn(List.of());
+        MvcResult result = open(admin());
+        streams.onUpdate(new ProgressUpdate(RENTAL, CHECKPOINT, ProgressStage.SEALED, AT, Grade.B));
+        streams.onUpdate(new ProgressUpdate(RENTAL, CHECKPOINT, ProgressStage.GRADED, AT, null));
+        streams.onUpdate(new ProgressUpdate(RENTAL, CHECKPOINT, ProgressStage.SEALED, AT, Grade.B));
+        String body = result.getResponse().getContentAsString();
+        assertThat(body).doesNotContain("GRADED");
+        assertThat(body.split("event:done", -1)).hasSize(2);
+    }
 }

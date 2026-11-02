@@ -21,6 +21,7 @@ import org.springframework.transaction.event.TransactionalEventListener;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import com.gakdo.trace.report.common.infra.Times;
+import com.gakdo.trace.report.progress.domain.ProgressStage;
 import com.gakdo.trace.report.progress.domain.ProgressUpdate;
 import com.gakdo.trace.report.record.infra.CheckpointViewRepository;
 
@@ -35,9 +36,19 @@ public class ProgressStreams {
     private static final Logger log = LoggerFactory.getLogger(ProgressStreams.class);
 
     /** 연결 하나. checkpointScope가 있으면 그 시점만 보낸다. */
-    record Subscriber(SseEmitter emitter, String checkpointScope) {
+    record Subscriber(SseEmitter emitter, String checkpointScope, Map<String, ProgressStage> lastSent) {
+        Subscriber(SseEmitter emitter, String checkpointScope) {
+            this(emitter, checkpointScope, new ConcurrentHashMap<>());
+        }
+
         boolean wants(ProgressUpdate update) {
             return checkpointScope == null || checkpointScope.equals(update.checkpointId());
+        }
+
+        /** 이 연결에 이미 보낸 단계와 같거나 앞선 단계면 보내지 않는다(늦게 도착한 알림이 done 뒤에 80%를 보내지 않게). */
+        boolean isNewer(ProgressUpdate update) {
+            ProgressStage last = lastSent.get(update.checkpointId());
+            return last == null || update.stage().ordinal() > last.ordinal();
         }
     }
 
@@ -110,6 +121,9 @@ public class ProgressStreams {
     }
 
     private void send(String rentalId, Subscriber subscriber, ProgressUpdate update) {
+        if (!subscriber.isNewer(update)) {
+            return;
+        }
         try {
             if (update.done()) {
                 subscriber.emitter().send(SseEmitter.event().name("done").data(doneData(update), MediaType.APPLICATION_JSON));
@@ -117,6 +131,7 @@ public class ProgressStreams {
                 subscriber.emitter().send(SseEmitter.event().name("progress")
                         .data(progressData(update), MediaType.APPLICATION_JSON));
             }
+            subscriber.lastSent().put(update.checkpointId(), update.stage());
         } catch (IOException | IllegalStateException e) {
             log.debug("끊긴 진행률 연결을 정리합니다: rentalId={}", rentalId);
             remove(rentalId, subscriber);
