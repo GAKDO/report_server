@@ -29,8 +29,7 @@ public class VerifyController {
             throw notFound();
         }
         ReportQueryService.Verification v = queries.verify(verifyToken).orElseThrow(VerifyController::notFound);
-        // 기종 이름은 이벤트에 아직 없다(계약 1.1 결정 대기). 그 전에는 빈 문자열
-        return new VerifyResponse(v.valid(), "", v.records().stream().map(VerifyRecordResponse::of).toList(),
+        return new VerifyResponse(v.valid(), v.modelName(), v.records().stream().map(VerifyRecordResponse::of).toList(),
                 v.checkedAt());
     }
 

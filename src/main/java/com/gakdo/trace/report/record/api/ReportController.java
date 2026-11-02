@@ -47,8 +47,7 @@ public class ReportController {
             @AuthenticationPrincipal Jwt jwt) {
         Caller.from(jwt).requireRentalReader(rentalId);
         ReportQueryService.Timeline t = queries.timeline(rentalId);
-        // 기종 코드는 이벤트에 아직 없다(계약 1.1 결정 대기). 그 전에는 빈 문자열
-        return new RentalTimelineResponse(t.rentalId(), "", t.chainStatus(), t.verifyUrl(),
+        return new RentalTimelineResponse(t.rentalId(), t.modelCode(), t.chainStatus(), t.verifyUrl(),
                 t.checkpoints().stream().map(TimelineCheckpointResponse::of).toList());
     }
 

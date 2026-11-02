@@ -76,6 +76,11 @@ public class CheckpointView {
     @Column(name = "unjudgeable_faces", nullable = false)
     private List<String> unjudgeableFaces = new ArrayList<>();
 
+    /** 흠집 핀(화면용, 체인 재료 아님). 1.0 이벤트면 빈 배열 */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(nullable = false)
+    private List<Pin> pins = new ArrayList<>();
+
     @Column(name = "graded_at")
     private OffsetDateTime gradedAt;
 
@@ -89,6 +94,9 @@ public class CheckpointView {
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "diag_flags", nullable = false)
     private List<String> diagFlags = new ArrayList<>();
+
+    @Column(name = "diag_max_capacity_pct")
+    private Double diagMaxCapacityPct;
 
     @Column(name = "sealed_at")
     private OffsetDateTime sealedAt;
@@ -145,9 +153,18 @@ public class CheckpointView {
         status = status.advanceTo(CheckpointStatus.GRADED);
     }
 
+    /** 핀은 등급과 함께 오지만 체인 재료가 아니라 따로 받는다. 봉인 뒤에는 등급처럼 바꾸지 않는다. */
+    public void recordPins(List<Pin> values) {
+        if (isSealed()) {
+            return;
+        }
+        pins = new ArrayList<>(values);
+    }
+
     /** 봉인 뒤에 온 진단도 화면에는 보이지만 체인에는 들어가지 않는다(SealService가 봉인 때 읽은 값만 묶는다). */
-    public void recordDiagnostics(String runId, String sha256, List<String> flagKinds) {
+    public void recordDiagnostics(String runId, String sha256, List<String> flagKinds, Double maxCapacityPct) {
         diagRunId = runId;
+        diagMaxCapacityPct = maxCapacityPct;
         diagSha256 = sha256;
         diagFlags = new ArrayList<>(flagKinds);
     }
@@ -189,6 +206,8 @@ public class CheckpointView {
     public String ruleVersion() { return ruleVersion; }
     public List<String> newDefectIds() { return List.copyOf(newDefectIds); }
     public List<String> unjudgeableFaces() { return List.copyOf(unjudgeableFaces); }
+    public List<Pin> pins() { return List.copyOf(pins); }
+    public Double diagMaxCapacityPct() { return diagMaxCapacityPct; }
     public OffsetDateTime gradedAt() { return gradedAt; }
     public String diagRunId() { return diagRunId; }
     public String diagSha256() { return diagSha256; }

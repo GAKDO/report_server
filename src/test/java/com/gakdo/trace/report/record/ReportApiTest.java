@@ -38,6 +38,7 @@ import com.gakdo.trace.report.record.domain.ChainRecord;
 import com.gakdo.trace.report.record.domain.CheckpointType;
 import com.gakdo.trace.report.record.domain.CheckpointView;
 import com.gakdo.trace.report.record.domain.Grade;
+import com.gakdo.trace.report.record.domain.Pin;
 import com.gakdo.trace.report.support.WebTestBase;
 
 @WebMvcTest(controllers = {ReportController.class, VerifyController.class})
@@ -64,23 +65,29 @@ class ReportApiTest extends WebTestBase {
         CheckpointView view = new CheckpointView(RENTAL, CP);
         view.assignType(CheckpointType.OUT);
         view.recordGrade("Z4U03wInx137yk13jDsmn", Grade.A, "grade-rule-1.0", List.of(), List.of(), List.of(), AT);
-        view.recordDiagnostics("R1n0000000000000000aa", HASH, List.of("CAPACITY_DROP"));
-        when(queries.timeline(RENTAL)).thenReturn(new ReportQueryService.Timeline(RENTAL, "VALID",
+        view.recordDiagnostics("R1n0000000000000000aa", HASH, List.of("CAPACITY_DROP"), 84.0);
+        view.recordPins(List.of(new Pin("D1n0000000000000000aa", "TOP", 120.5, 88.0, true)));
+        when(queries.timeline(RENTAL)).thenReturn(new ReportQueryService.Timeline(RENTAL, "MBA13-M2", "VALID",
                 "https://gakdo.site/verify/0123456789abcdef0123456789abcdef", List.of(view)));
     }
 
     @Test
-    @DisplayName("타임라인: 관리자와 본인 렌탈 고객은 시점별 등급·진단 플래그·체인 상태를 본다")
+    @DisplayName("타임라인: 관리자와 본인 렌탈 고객은 기종·시점별 등급·흠집 핀·배터리 최대 용량·진단 플래그·체인 상태를 본다")
     void timelineForAdminAndOwner() throws Exception {
         timelineExists();
         mvc.perform(get("/api/v1/reports/rentals/" + RENTAL).with(customer(RENTAL)))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.modelCode").value("MBA13-M2"))
                 .andExpect(jsonPath("$.chainStatus").value("VALID"))
                 .andExpect(jsonPath("$.verifyUrl").value("https://gakdo.site/verify/0123456789abcdef0123456789abcdef"))
                 .andExpect(jsonPath("$.checkpoints[0].type").value("OUT"))
                 .andExpect(jsonPath("$.checkpoints[0].status").value("GRADED"))
                 .andExpect(jsonPath("$.checkpoints[0].grade").value("A"))
-                .andExpect(jsonPath("$.checkpoints[0].pins").isArray())
+                .andExpect(jsonPath("$.checkpoints[0].pins[0].defectId").value("D1n0000000000000000aa"))
+                .andExpect(jsonPath("$.checkpoints[0].pins[0].face").value("TOP"))
+                .andExpect(jsonPath("$.checkpoints[0].pins[0].x").value(120.5))
+                .andExpect(jsonPath("$.checkpoints[0].pins[0].isNew").value(true))
+                .andExpect(jsonPath("$.checkpoints[0].diagnosticsSummary.maxCapacityPct").value(84.0))
                 .andExpect(jsonPath("$.checkpoints[0].diagnosticsSummary.flags[0]").value("CAPACITY_DROP"))
                 .andExpect(jsonPath("$.checkpoints[0].newDefectCount").value(0));
         mvc.perform(get("/api/v1/reports/rentals/" + RENTAL).with(admin())).andExpect(status().isOk());
@@ -120,10 +127,11 @@ class ReportApiTest extends WebTestBase {
     @DisplayName("공개 검증은 로그인 없이 등급·시점·지문·서명 시각만 주고, 서명·사진·렌탈 ID는 없다")
     void publicVerifyHasNoDetails() throws Exception {
         String token = "ab".repeat(16);
-        when(queries.verify(token)).thenReturn(Optional.of(new ReportQueryService.Verification(true, List.of(record()), AT)));
+        when(queries.verify(token)).thenReturn(Optional.of(new ReportQueryService.Verification(true, "MacBook Air (M2, 2022)", List.of(record()), AT)));
         mvc.perform(get("/api/v1/verify/" + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.valid").value(true))
+                .andExpect(jsonPath("$.modelName").value("MacBook Air (M2, 2022)"))
                 .andExpect(jsonPath("$.records[0].checkpointType").value("OUT"))
                 .andExpect(jsonPath("$.records[0].grade").value("A"))
                 .andExpect(jsonPath("$.records[0].payloadHash").value(HASH))

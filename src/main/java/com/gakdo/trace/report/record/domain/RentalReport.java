@@ -32,6 +32,18 @@ public class RentalReport {
     @Column(name = "verify_token", nullable = false, length = 32, unique = true, updatable = false, columnDefinition = "char(32)")
     private String verifyToken;
 
+    @Column(name = "device_id", length = 21)
+    private String deviceId;
+
+    @Column(length = 64)
+    private String serial;
+
+    @Column(name = "model_code", length = 64)
+    private String modelCode;
+
+    @Column(name = "model_name", length = 128)
+    private String modelName;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
 
@@ -39,6 +51,14 @@ public class RentalReport {
     private OffsetDateTime updatedAt;
 
     protected RentalReport() {
+    }
+
+    /** checkpoint.started가 알려 준 기기·기종. 렌탈 중 기기는 바뀌지 않지만 늦게 온 값이 덮어도 같은 값이다. */
+    public void recordDevice(String device, String serialNo, String code, String name) {
+        deviceId = device;
+        serial = serialNo;
+        modelCode = code;
+        modelName = name;
     }
 
     @PrePersist
@@ -54,4 +74,8 @@ public class RentalReport {
 
     public String rentalId() { return rentalId; }
     public String verifyToken() { return verifyToken; }
+    public String deviceId() { return deviceId; }
+    public String serial() { return serial; }
+    public String modelCode() { return modelCode; }
+    public String modelName() { return modelName; }
 }

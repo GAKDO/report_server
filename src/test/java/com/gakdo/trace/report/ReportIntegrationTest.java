@@ -114,11 +114,16 @@ class ReportIntegrationTest {
         String rcv = PublicIds.next();
         String ret = PublicIds.next();
 
-        // ── 출고: 진단이 먼저 오고, 업로드·등급이 오면 바로 봉인 ──
-        send("trace.diagnostics.recorded", envelope(rental, out) + ",\"runId\":\"" + PublicIds.next() + "\",\"sha256\":\""
-                + sha("diag-out") + "\",\"baseRunId\":null,\"flags\":[]");
+        // ── 출고: 시점 시작(기종, 1.1)·진단(배터리 최대 용량, 1.1)이 먼저 오고, 업로드·등급(핀, 1.1)이 오면 바로 봉인 ──
+        send("trace.checkpoint.started", envelope11(rental, out) + ",\"checkpointType\":\"OUT\",\"deviceId\":\""
+                + PublicIds.next() + "\",\"serial\":\"TEST-SERIAL-1\",\"modelCode\":\"MBA13-M2\""
+                + ",\"modelName\":\"MacBook Air (M2, 2022)\"");
+        send("trace.diagnostics.recorded", envelope11(rental, out) + ",\"runId\":\"" + PublicIds.next() + "\",\"sha256\":\""
+                + sha("diag-out") + "\",\"baseRunId\":null,\"flags\":[],\"maxCapacityPct\":91.2");
         List<String[]> outPhotos = uploadPhotos(rental, out, 2);
-        String gradedOut = envelope(rental, out) + gradedBody("OUT", "A", outPhotos);
+        String pinId = PublicIds.next();
+        String gradedOut = envelope11(rental, out) + gradedBody("OUT", "A", outPhotos)
+                + ",\"pins\":[{\"defectId\":\"" + pinId + "\",\"face\":\"TOP\",\"x\":812.5,\"y\":403.0,\"isNew\":true}]";
         send("trace.checkpoint.graded", gradedOut);
         JsonNode sealed1 = receiveSealed();
         assertThat(sealed1.path("seq").asInt()).isEqualTo(1);
@@ -133,6 +138,13 @@ class ReportIntegrationTest {
         JsonNode timeline = getJson("/api/v1/reports/rentals/" + rental);
         assertThat(timeline.path("chainStatus").asText()).isEqualTo("VALID");
         assertThat(timeline.path("checkpoints").get(0).path("status").asText()).isEqualTo("SEALED");
+        assertThat(timeline.path("modelCode").asText()).isEqualTo("MBA13-M2");
+        JsonNode outView = timeline.path("checkpoints").get(0);
+        assertThat(outView.path("pins")).hasSize(1);
+        assertThat(outView.path("pins").get(0).path("defectId").asText()).isEqualTo(pinId);
+        assertThat(outView.path("pins").get(0).path("x").asDouble()).isEqualTo(812.5);
+        assertThat(outView.path("pins").get(0).path("isNew").asBoolean()).isTrue();
+        assertThat(outView.path("diagnosticsSummary").path("maxCapacityPct").asDouble()).isEqualTo(91.2);
         String verifyUrl = timeline.path("verifyUrl").asText();
         assertThat(verifyUrl).matches("https://gakdo\\.site/verify/[0-9a-f]{32}");
         String verifyPath = "/api/v1/verify/" + verifyUrl.substring(verifyUrl.lastIndexOf('/') + 1);
@@ -153,6 +165,7 @@ class ReportIntegrationTest {
         JsonNode verify = json.readTree(mvc.perform(get(verifyPath)).andExpect(status().isOk()).andReturn()
                 .getResponse().getContentAsString(StandardCharsets.UTF_8));
         assertThat(verify.path("valid").asBoolean()).isTrue();
+        assertThat(verify.path("modelName").asText()).isEqualTo("MacBook Air (M2, 2022)");
         assertThat(verify.path("records").get(1).path("grade").asText()).isEqualTo("B");
         assertThat(verify.path("records").get(0).has("signature")).isFalse();
         assertThat(verify.toString()).doesNotContain(rental).doesNotContain(outPhotos.get(0)[0]);
@@ -233,6 +246,10 @@ class ReportIntegrationTest {
     private static String envelope(String rental, String checkpoint) {
         return "{\"schemaVersion\":\"1.0\",\"eventId\":\"" + PublicIds.next() + "\",\"occurredAt\":\"2026-11-12T09:00:00+09:00\""
                 + ",\"rentalId\":\"" + rental + "\",\"checkpointId\":\"" + checkpoint + "\"";
+    }
+
+    private static String envelope11(String rental, String checkpoint) {
+        return envelope(rental, checkpoint).replace("\"schemaVersion\":\"1.0\"", "\"schemaVersion\":\"1.1\"");
     }
 
     private void send(String routingKey, String partial) {

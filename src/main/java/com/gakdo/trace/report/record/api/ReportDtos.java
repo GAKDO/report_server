@@ -31,11 +31,13 @@ public final class ReportDtos {
 
         static TimelineCheckpointResponse of(CheckpointView v) {
             DiagnosticsSummaryResponse diagnostics = v.hasDiagnostics()
-                    ? new DiagnosticsSummaryResponse(null, v.diagFlags())
+                    ? new DiagnosticsSummaryResponse(v.diagMaxCapacityPct(), v.diagFlags())
                     : null;
-            // 핀(흠집 위치)은 이벤트에 아직 없다(계약 1.1 결정 대기). 그 전에는 빈 배열
+            List<PinResponse> pins = v.pins().stream()
+                    .map(p -> new PinResponse(p.defectId(), p.face(), p.x(), p.y(), p.isNew()))
+                    .toList();
             return new TimelineCheckpointResponse(v.checkpointId(), v.checkpointType().name(), v.status().name(),
-                    v.occurredAt(), v.grade() == null ? null : v.grade().name(), v.newDefectIds().size(), List.of(),
+                    v.occurredAt(), v.grade() == null ? null : v.grade().name(), v.newDefectIds().size(), pins,
                     diagnostics, v.sealedAt());
         }
     }

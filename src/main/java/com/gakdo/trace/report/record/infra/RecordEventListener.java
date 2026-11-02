@@ -24,9 +24,10 @@ import com.gakdo.trace.report.record.domain.CheckpointType;
 import com.gakdo.trace.report.record.domain.Grade;
 import com.gakdo.trace.report.record.domain.HashRef;
 import com.gakdo.trace.report.record.domain.PhotoRef;
+import com.gakdo.trace.report.record.domain.Pin;
 
 /**
- * trace.report.updates의 이벤트 3종을 읽는다. 필요한 필드만 읽고 모르는 필드는 무시한다(너그러운 소비자, 부 버전 대비).
+ * trace.report.updates의 이벤트 4종을 읽는다. 필요한 필드만 읽고 모르는 필드는 무시한다(너그러운 소비자, 부 버전 대비).
  * 형식이 깨진 메시지는 다시 해도 소용없어 바로 trace.dlx로 보낸다.
  */
 @Component
@@ -61,7 +62,10 @@ public class RecordEventListener {
             case AmqpConfig.CHECKPOINT_GRADED -> ingest.graded(envelope(routingKey, event), graded(event));
             case AmqpConfig.DIAGNOSTICS_RECORDED -> ingest.diagnostics(envelope(routingKey, event),
                     new RecordIngestService.Diagnostics(publicId(event, "runId"), sha256(event, "sha256"),
-                            flagKinds(event)));
+                            flagKinds(event), maxCapacityPct(event)));
+            case AmqpConfig.CHECKPOINT_STARTED -> ingest.started(envelope(routingKey, event),
+                    new RecordIngestService.Started(publicId(event, "deviceId"), text(event, "serial", 64),
+                            text(event, "modelCode", 64), text(event, "modelName", 128)));
             default -> {
                 log.warn("받지 않는 라우팅 키를 건너뜁니다: {}", routingKey);
                 yield false;
@@ -91,7 +95,51 @@ public class RecordEventListener {
         return new RecordIngestService.Graded(publicId(event, "captureSetId"),
                 enumValue(CheckpointType.class, event, "checkpointType"), enumValue(Grade.class, event, "grade"),
                 text(event, "ruleVersion"), strings(event.path("newDefectIds")),
-                strings(event.path("unjudgeableFaces")), photos);
+                strings(event.path("unjudgeableFaces")), photos, pins(event));
+    }
+
+    /** 1.1 선택 필드. 없으면(1.0) 빈 배열 */
+    private static List<Pin> pins(JsonNode event) {
+        List<Pin> pins = new ArrayList<>();
+        JsonNode array = event.path("pins");
+        if (array.isMissingNode() || array.isNull()) {
+            return pins;
+        }
+        if (!array.isArray()) {
+            throw reject("pins가 배열이 아닙니다");
+        }
+        for (JsonNode p : array) {
+            double x = number(p, "x");
+            double y = number(p, "y");
+            if (x < 0 || y < 0) {
+                throw reject("핀 좌표가 음수입니다");
+            }
+            if (!p.path("isNew").isBoolean()) {
+                throw reject("핀의 isNew가 참·거짓이 아닙니다");
+            }
+            pins.add(new Pin(publicId(p, "defectId"), text(p, "face"), x, y, p.path("isNew").asBoolean()));
+        }
+        return pins;
+    }
+
+    /** 1.1 선택 필드. 없거나 null이면 null(배터리 없음·읽지 못함) */
+    private static Double maxCapacityPct(JsonNode event) {
+        JsonNode value = event.path("maxCapacityPct");
+        if (value.isMissingNode() || value.isNull()) {
+            return null;
+        }
+        if (!value.isNumber() || value.asDouble() < 0 || value.asDouble() > 200) {
+            throw reject("maxCapacityPct가 0~200 숫자가 아닙니다");
+        }
+        return value.asDouble();
+    }
+
+    private static double number(JsonNode node, String field) {
+        JsonNode value = node.path(field);
+        if (!value.isNumber()) {
+            throw reject(field + "가 숫자가 아닙니다");
+        }
+        return value.asDouble();
     }
 
     private List<PhotoRef> photos(JsonNode event) {
@@ -147,6 +195,15 @@ public class RecordEventListener {
         String value = node.path(field).asText(null);
         if (value == null || value.isBlank()) {
             throw reject(field + "가 비어 있습니다");
+        }
+        return value;
+    }
+
+    /** 저장 열 길이(V3)를 넘는 값은 다시 해도 실패하므로 바로 거절한다. */
+    private static String text(JsonNode node, String field, int maxLength) {
+        String value = text(node, field);
+        if (value.length() > maxLength) {
+            throw reject(field + "가 " + maxLength + "자를 넘습니다");
         }
         return value;
     }

@@ -30,13 +30,13 @@ import com.gakdo.trace.report.record.infra.RentalReportRepository;
 public class ReportQueryService {
 
     /** 타임라인 결과. chainStatus는 codes.yaml report.chain_status */
-    public record Timeline(String rentalId, String chainStatus, String verifyUrl, List<CheckpointView> checkpoints) {
+    public record Timeline(String rentalId, String modelCode, String chainStatus, String verifyUrl, List<CheckpointView> checkpoints) {
     }
 
     public record Chain(String rentalId, boolean valid, List<ChainRecord> records) {
     }
 
-    public record Verification(boolean valid, List<ChainRecord> records, OffsetDateTime checkedAt) {
+    public record Verification(boolean valid, String modelName, List<ChainRecord> records, OffsetDateTime checkedAt) {
     }
 
     public record ManualSeals(List<ManualSealLog> items, String nextCursor) {
@@ -71,7 +71,7 @@ public class ReportQueryService {
         List<ChainRecord> records = chain.findByRentalIdOrderBySeqAsc(rentalId);
         String status = records.isEmpty() ? "PENDING" : verifier.verify(rentalId, records).valid() ? "VALID" : "BROKEN";
         String verifyUrl = records.isEmpty() ? null : webPublicUrl + "/verify/" + report.verifyToken();
-        return new Timeline(rentalId, status, verifyUrl, typed);
+        return new Timeline(rentalId, orEmpty(report.modelCode()), status, verifyUrl, typed);
     }
 
     public Chain chain(String rentalId) {
@@ -85,7 +85,7 @@ public class ReportQueryService {
         return reports.findByVerifyToken(verifyToken).map(report -> {
             List<ChainRecord> records = chain.findByRentalIdOrderBySeqAsc(report.rentalId());
             ChainCheck.Result result = verifier.verify(report.rentalId(), records);
-            return new Verification(result.valid(), records, Times.now());
+            return new Verification(result.valid(), orEmpty(report.modelName()), records, Times.now());
         });
     }
 
@@ -98,6 +98,11 @@ public class ReportQueryService {
         }
         List<ManualSealLog> items = rows.subList(0, limit);
         return new ManualSeals(List.copyOf(items), encodeCursor(items.get(items.size() - 1).id()));
+    }
+
+    /** checkpoint.started가 아직 안 왔으면(1.0 생산자) 계약의 필수 문자열을 빈 값으로 채운다. */
+    private static String orEmpty(String value) {
+        return value == null ? "" : value;
     }
 
     static String encodeCursor(long id) {
