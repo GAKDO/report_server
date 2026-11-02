@@ -14,8 +14,10 @@ import com.gakdo.trace.report.record.domain.CheckpointView;
 import com.gakdo.trace.report.record.domain.Grade;
 import com.gakdo.trace.report.record.domain.HashRef;
 import com.gakdo.trace.report.record.domain.PhotoRef;
+import com.gakdo.trace.report.record.domain.Pin;
 import com.gakdo.trace.report.record.infra.CheckpointViewRepository;
 import com.gakdo.trace.report.record.infra.ProcessedEventRepository;
+import com.gakdo.trace.report.record.infra.RentalReportRepository;
 
 /**
  * 이벤트로 시점 읽기 모델을 채운다. 같은 eventId는 한 번만 처리하고(같은 트랜잭션에 기록), 등급·진단이 오면 봉인을 시도한다.
@@ -31,20 +33,38 @@ public class RecordIngestService {
     }
 
     public record Graded(String captureSetId, CheckpointType type, Grade grade, String ruleVersion,
-            List<String> newDefectIds, List<String> unjudgeableFaces, List<HashRef> photos) {
+            List<String> newDefectIds, List<String> unjudgeableFaces, List<HashRef> photos, List<Pin> pins) {
     }
 
-    public record Diagnostics(String runId, String sha256, List<String> flagKinds) {
+    public record Diagnostics(String runId, String sha256, List<String> flagKinds, Double maxCapacityPct) {
+    }
+
+    /** checkpoint.started(1.1): 이 렌탈의 기기·기종 */
+    public record Started(String deviceId, String serial, String modelCode, String modelName) {
     }
 
     private final ProcessedEventRepository processed;
     private final CheckpointViewRepository views;
     private final SealService seals;
+    private final RentalReportRepository reports;
 
-    public RecordIngestService(ProcessedEventRepository processed, CheckpointViewRepository views, SealService seals) {
+    public RecordIngestService(ProcessedEventRepository processed, CheckpointViewRepository views, SealService seals,
+            RentalReportRepository reports) {
         this.processed = processed;
         this.views = views;
         this.seals = seals;
+        this.reports = reports;
+    }
+
+    /** 기기·기종만 리포트 줄에 적는다. 시점 종류는 등급 이벤트가 정한다(체인 규칙을 바꾸지 않으려고). */
+    @Transactional
+    public boolean started(Envelope env, Started started) {
+        if (!firstTime(env)) {
+            return false;
+        }
+        reports.findByRentalId(env.rentalId()).orElseThrow()
+                .recordDevice(started.deviceId(), started.serial(), started.modelCode(), started.modelName());
+        return true;
     }
 
     /** @return 처리했으면 true, 이미 처리한 eventId면 false */
@@ -72,6 +92,7 @@ public class RecordIngestService {
             log.warn("이미 봉인된 시점의 등급 이벤트는 체인을 바꾸지 않습니다: checkpointId={}", env.checkpointId());
             return true;
         }
+        view.recordPins(graded.pins());
         view.recordGrade(graded.captureSetId(), graded.grade(), graded.ruleVersion(), graded.newDefectIds(),
                 graded.unjudgeableFaces(), graded.photos(), Times.now()); // 진단 대기는 받은 시각부터
         views.flush();
@@ -89,7 +110,8 @@ public class RecordIngestService {
             log.warn("봉인 뒤에 온 진단은 화면에만 보이고 체인에는 들어가지 않습니다: checkpointId={} runId={}",
                     env.checkpointId(), diagnostics.runId());
         }
-        view.recordDiagnostics(diagnostics.runId(), diagnostics.sha256(), diagnostics.flagKinds());
+        view.recordDiagnostics(diagnostics.runId(), diagnostics.sha256(), diagnostics.flagKinds(),
+                diagnostics.maxCapacityPct());
         views.flush();
         seals.sealIfReady(env.checkpointId(), Times.now());
         return true;

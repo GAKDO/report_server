@@ -12,4 +12,4 @@
 - [x] T010 수동 봉인 + 사용 기록 API
 - [x] T011 통합 시험(PostgreSQL·RabbitMQ·S3): 봉인 → 검증 → 사진 바꿔치기 실패 → 수동 봉인
 - [ ] T012 gateway access-policy 재생성(contracts #11 머지 뒤)
-- [ ] T013 (결정 뒤) 핀·기종 이름·배터리 용량 채우기
+- [x] T013 핀·기종 코드·기종 이름·배터리 최대 용량 채우기(11/2 결정: 이벤트 1.1 선택 필드 + trace.checkpoint.started, contracts #14, V3)
