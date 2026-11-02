@@ -16,6 +16,18 @@ TRACE(노트북 렌탈 상태 기록 서비스)의 **report-server**: 타임라�
 curl http://localhost:8080/api/v1/reports/ping
 ```
 
+## 설정 (환경 변수)
+
+| 이름 | 어디서 | 뜻 |
+|---|---|---|
+| `CHAIN_SIGNING_KEY` | trace-secrets | 해시 체인 Ed25519 개인 키. `openssl genpkey -algorithm ed25519 \| base64 -w0` (없으면 기동 실패) |
+| `WEB_PUBLIC_URL` | infra.env | 검증 주소 `<WEB_PUBLIC_URL>/verify/<token>` |
+| `MINIO_ENDPOINT`·`MINIO_ACCESS_KEY`·`MINIO_SECRET_KEY` | infra.env·trace-secrets | 검증 때 봉인한 사진(trace-captures)을 다시 본다 |
+| `REPORT_SEAL_DIAGNOSTICS_WAIT` | 선택(PT1M) | 등급이 나온 뒤 진단을 기다리는 시간 |
+| `REPORT_VERIFY_CACHE_TTL` | 선택(PT30S) | 공개 검증 결과를 두는 시간 |
+
+해시 규칙은 `specs/001-timeline-seal-chain/data-model.md`(`trace-chain-1`)에 있습니다.
+
 ## 테스트
 
 ```bash
