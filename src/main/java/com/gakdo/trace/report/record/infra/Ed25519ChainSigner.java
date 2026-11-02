@@ -48,10 +48,10 @@ public final class Ed25519ChainSigner implements ChainSigner {
     }
 
     static Ed25519PrivateKeyParameters parse(String value) {
-        String pem = value.startsWith("-----") ? value
-                : new String(Base64.getMimeDecoder().decode(value), StandardCharsets.US_ASCII);
-        String body = pem.replaceAll("-----[A-Z ]+-----", "").replaceAll("\\s", "");
         try {
+            String pem = value.startsWith("-----") ? value
+                    : new String(Base64.getMimeDecoder().decode(value), StandardCharsets.US_ASCII);
+            String body = pem.replaceAll("-----[A-Z ]+-----", "").replaceAll("\\s", "");
             AsymmetricKeyParameter key = PrivateKeyFactory.createKey(Base64.getDecoder().decode(body));
             if (key instanceof Ed25519PrivateKeyParameters ed) {
                 return ed;

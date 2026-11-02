@@ -72,6 +72,11 @@ public final class ReportDtos {
 
     public record ManualSealRequest(@NotNull CheckpointType checkpointType, @NotNull Grade grade,
             @NotBlank @Size(min = 5, max = 300) String reason) {
+
+        /** 검증 전에 앞뒤 공백을 지워 "   a   " 같은 값이 5자 규칙을 통과하지 못하게 한다. */
+        public ManualSealRequest {
+            reason = reason == null ? null : reason.strip();
+        }
     }
 
     public record ManualSealItem(String rentalId, String checkpointId, String checkpointType, String grade, int seq,

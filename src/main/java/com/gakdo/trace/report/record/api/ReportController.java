@@ -64,7 +64,7 @@ public class ReportController {
             @PathVariable @Pattern(regexp = PublicIds.PATTERN) String checkpointId,
             @Valid @RequestBody ManualSealRequest request, @AuthenticationPrincipal Jwt jwt) {
         return ChainRecordResponse.of(seals.sealManually(rentalId, checkpointId, request.checkpointType(),
-                request.grade(), request.reason().strip(), jwt.getSubject()));
+                request.grade(), request.reason(), jwt.getSubject()));
     }
 
     @GetMapping("/api/v1/reports/manual-seals")

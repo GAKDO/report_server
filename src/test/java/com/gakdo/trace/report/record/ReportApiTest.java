@@ -153,6 +153,12 @@ class ReportApiTest extends WebTestBase {
                 .content("{\"checkpointType\":\"OUT\",\"grade\":\"A\",\"reason\":\"짧음\"}"))
                 .andExpect(status().isBadRequest()).andExpect(jsonPath("$.errors[0].field").value("reason"));
         mvc.perform(post(url).with(admin()).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"checkpointType\":\"OUT\",\"grade\":\"A\",\"reason\":\"     a     \"}"))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.errors[0].field").value("reason"));
+        mvc.perform(post(url).with(admin()).contentType(MediaType.APPLICATION_JSON).accept(MediaType.APPLICATION_XML)
+                .content(body))
+                .andExpect(status().is4xxClientError());
+        mvc.perform(post(url).with(admin()).contentType(MediaType.APPLICATION_JSON)
                 .content("{\"checkpointType\":\"OUT\",\"grade\":\"E\",\"reason\":\"다섯 글자 이상\"}"))
                 .andExpect(status().isBadRequest());
 

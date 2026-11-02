@@ -8,6 +8,7 @@ import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.web.ErrorResponse;
 import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -104,6 +105,11 @@ public class ProblemAdvice {
 
     @ExceptionHandler(Exception.class)
     ResponseEntity<ProblemDetail> unexpected(Exception e, HttpServletRequest request) {
+        // 위에서 다루지 않은 Spring MVC 예외(406 등)는 원래 4xx를 살려 클라이언트 오류로 돌려준다
+        if (e instanceof ErrorResponse er && er.getStatusCode().is4xxClientError()) {
+            ErrorCode code = er.getStatusCode().value() == 404 ? ErrorCode.NOT_FOUND : ErrorCode.VALIDATION_FAILED;
+            return respond(code, null, request, List.of());
+        }
         log.error("처리하지 못한 오류: {} {}", request.getMethod(), request.getRequestURI(), e);
         return respond(ErrorCode.INTERNAL_ERROR, null, request, List.of());
     }
