@@ -38,7 +38,7 @@ public class RentalReport {
     @Column(length = 64)
     private String serial;
 
-    @Column(name = "model_code", length = 32)
+    @Column(name = "model_code", length = 64)
     private String modelCode;
 
     @Column(name = "model_name", length = 128)

@@ -7,5 +7,5 @@ ALTER TABLE report.checkpoint_view
 ALTER TABLE report.report
     ADD COLUMN device_id varchar(21),
     ADD COLUMN serial varchar(64),
-    ADD COLUMN model_code varchar(32),
+    ADD COLUMN model_code varchar(64),
     ADD COLUMN model_name varchar(128);
