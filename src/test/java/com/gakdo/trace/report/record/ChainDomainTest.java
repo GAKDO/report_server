@@ -53,7 +53,8 @@ class ChainDomainTest {
         JsonNode b = mapper.readTree("{ \"a\" : true , \"b\" : [ 1 , { \"x\" : null , \"y\" : \"둘\" } ] }");
         assertThat(CanonicalJson.write(a)).isEqualTo("{\"a\":true,\"b\":[1,{\"x\":null,\"y\":\"둘\"}]}");
         assertThat(ChainHashes.payloadHash(a)).isEqualTo(ChainHashes.payloadHash(b));
-        assertThatThrownBy(() -> CanonicalJson.write(mapper.readTree("{\"f\":1.5}")))
+        JsonNode fraction = mapper.readTree("{\"f\":1.5}");
+        assertThatThrownBy(() -> CanonicalJson.write(fraction))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
@@ -150,26 +151,29 @@ class ChainDomainTest {
 
     private List<ChainRecord> twoRecordChain() {
         List<ChainRecord> records = new ArrayList<>();
-        records.add(record(1, OUT_CP, CheckpointType.OUT, Grade.A, List.of(new HashRef(P1, H1)), null));
-        records.add(record(2, RCV_CP, CheckpointType.RCV, Grade.B, List.of(new HashRef(P2, H2)),
+        records.add(chainRecord(1, OUT_CP, CheckpointType.OUT, Grade.A, List.of(new HashRef(P1, H1)), null));
+        records.add(chainRecord(2, RCV_CP, CheckpointType.RCV, Grade.B, List.of(new HashRef(P2, H2)),
                 records.get(0).recordHash()));
         return records;
     }
 
-    private ChainRecord record(int seq, String cp, CheckpointType type, Grade grade, List<HashRef> photos, String prev) {
+    private ChainRecord chainRecord(int seq, String cp, CheckpointType type, Grade grade, List<HashRef> photos, String prev) {
         CheckpointView view = new CheckpointView(RENTAL, cp);
         view.recordGrade("Z4U03wInx137yk13jDsmn", grade, "grade-rule-1.0", List.of(), List.of(), photos, now());
         ObjectNode payload = SealPayload.of(view, type, grade, null);
         String payloadHash = ChainHashes.payloadHash(payload);
         OffsetDateTime at = now();
         String recordHash = ChainHashes.recordHash(seq, RENTAL, cp, type, payloadHash, prev, at);
-        return new ChainRecord(RENTAL, cp, type, seq, grade, CanonicalJson.write(payload), payloadHash, prev,
-                recordHash, signer.sign(recordHash), at, false);
+        return new ChainRecord(new ChainRecord.Position(RENTAL, cp, type, seq), grade,
+                new ChainRecord.Seal(CanonicalJson.write(payload), payloadHash, prev, recordHash,
+                        signer.sign(recordHash), at),
+                false);
     }
 
     private static ChainRecord copy(ChainRecord r, String payload, String prev, String signature) {
-        return new ChainRecord(r.rentalId(), r.checkpointId(), r.checkpointType(), r.seq(), r.grade(), payload,
-                r.payloadHash(), prev, r.recordHash(), signature, r.signedAt(), r.manual());
+        return new ChainRecord(new ChainRecord.Position(r.rentalId(), r.checkpointId(), r.checkpointType(), r.seq()),
+                r.grade(), new ChainRecord.Seal(payload, r.payloadHash(), prev, r.recordHash(), signature, r.signedAt()),
+                r.manual());
     }
 
     private static PhotoRef photo(String id, String sha) {

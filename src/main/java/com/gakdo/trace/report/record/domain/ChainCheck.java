@@ -3,6 +3,7 @@ package com.gakdo.trace.report.record.domain;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Function;
 
@@ -51,29 +52,36 @@ public final class ChainCheck {
                 return Result.broken(r.seq(), "순번이 이어지지 않습니다");
             }
             JsonNode payload = parse(mapper, r.payload());
-            if (payload == null || !ChainHashes.payloadHash(payload).equals(r.payloadHash())) {
-                return Result.broken(r.seq(), "봉인 내용이 해시와 다릅니다");
-            }
-            if (!java.util.Objects.equals(prev, r.prevHash())) {
-                return Result.broken(r.seq(), "이전 기록 해시와 이어지지 않습니다");
-            }
-            String recordHash = ChainHashes.recordHash(r.seq(), r.rentalId(), r.checkpointId(), r.checkpointType(),
-                    r.payloadHash(), r.prevHash(), r.signedAt());
-            if (!recordHash.equals(r.recordHash())) {
-                return Result.broken(r.seq(), "기록 해시가 다릅니다");
-            }
-            if (!signer.verify(recordHash, r.signature())) {
-                return Result.broken(r.seq(), "서명이 맞지 않습니다");
-            }
-            if (storedHash != null) {
+            String reason = firstProblem(r, payload, prev, signer);
+            if (reason == null && storedHash != null) {
                 String bad = firstChangedPhoto(payload, objectKeys, storedHash);
-                if (bad != null) {
-                    return Result.broken(r.seq(), "봉인 뒤 사진이 바뀌었습니다: " + bad);
-                }
+                reason = bad == null ? null : "봉인 뒤 사진이 바뀌었습니다: " + bad;
             }
-            prev = recordHash;
+            if (reason != null) {
+                return Result.broken(r.seq(), reason);
+            }
+            prev = r.recordHash();
         }
         return Result.ok();
+    }
+
+    /** 한 줄의 해시·연결·서명을 검사 순서대로 보고 처음 어긋난 이유(맞으면 null). */
+    private static String firstProblem(ChainRecord r, JsonNode payload, String prev, ChainSigner signer) {
+        if (payload == null || !ChainHashes.payloadHash(payload).equals(r.payloadHash())) {
+            return "봉인 내용이 해시와 다릅니다";
+        }
+        if (!Objects.equals(prev, r.prevHash())) {
+            return "이전 기록 해시와 이어지지 않습니다";
+        }
+        String recordHash = ChainHashes.recordHash(r.seq(), r.rentalId(), r.checkpointId(), r.checkpointType(),
+                r.payloadHash(), r.prevHash(), r.signedAt());
+        if (!recordHash.equals(r.recordHash())) {
+            return "기록 해시가 다릅니다";
+        }
+        if (!signer.verify(recordHash, r.signature())) {
+            return "서명이 맞지 않습니다";
+        }
+        return null;
     }
 
     /** 사진 ID 목록(봉인 내용 photos[]). 객체 키를 모르는 사진(업로드 이벤트를 받지 못함)은 저장소 대조를 건너뛴다. */

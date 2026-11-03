@@ -35,6 +35,8 @@ public class RecordEventListener {
 
     private static final Logger log = LoggerFactory.getLogger(RecordEventListener.class);
     private static final Pattern SHA256 = Pattern.compile("^[0-9a-f]{64}$");
+    /** 이벤트에서 SHA-256 지문을 담는 필드 이름(contracts events) */
+    private static final String SHA256_FIELD = "sha256";
 
     private final RecordIngestService ingest;
     private final ObjectMapper mapper;
@@ -61,7 +63,7 @@ public class RecordEventListener {
                     publicId(event, "captureSetId"), photos(event));
             case AmqpConfig.CHECKPOINT_GRADED -> ingest.graded(envelope(routingKey, event), graded(event));
             case AmqpConfig.DIAGNOSTICS_RECORDED -> ingest.diagnostics(envelope(routingKey, event),
-                    new RecordIngestService.Diagnostics(publicId(event, "runId"), sha256(event, "sha256"),
+                    new RecordIngestService.Diagnostics(publicId(event, "runId"), sha256(event, SHA256_FIELD),
                             flagKinds(event), maxCapacityPct(event)));
             case AmqpConfig.CHECKPOINT_STARTED -> ingest.started(envelope(routingKey, event),
                     new RecordIngestService.Started(publicId(event, "deviceId"), text(event, "serial", 64),
@@ -72,8 +74,10 @@ public class RecordEventListener {
                 yield false;
             }
         };
-        log.info("이벤트 {} eventId={} checkpointId={}{}", routingKey, event.path("eventId").asText(),
-                event.path("checkpointId").asText(), done ? "" : " (건너뜀)");
+        if (log.isInfoEnabled()) {
+            log.info("이벤트 {} eventId={} checkpointId={}{}", routingKey, event.path("eventId").asText(),
+                    event.path("checkpointId").asText(), done ? "" : " (건너뜀)");
+        }
         return done;
     }
 
@@ -91,7 +95,7 @@ public class RecordEventListener {
     private RecordIngestService.Graded graded(JsonNode event) {
         List<HashRef> photos = new ArrayList<>();
         for (JsonNode p : event.path("photos")) {
-            photos.add(new HashRef(publicId(p, "photoId"), sha256(p, "sha256")));
+            photos.add(new HashRef(publicId(p, "photoId"), sha256(p, SHA256_FIELD)));
         }
         return new RecordIngestService.Graded(publicId(event, "captureSetId"),
                 enumValue(CheckpointType.class, event, "checkpointType"), enumValue(Grade.class, event, "grade"),
@@ -147,7 +151,7 @@ public class RecordEventListener {
         List<PhotoRef> photos = new ArrayList<>();
         for (JsonNode p : event.path("photos")) {
             photos.add(new PhotoRef(publicId(p, "photoId"), text(p, "face"), text(p, "light"), text(p, "camera"),
-                    text(p, "objectKey"), sha256(p, "sha256")));
+                    text(p, "objectKey"), sha256(p, SHA256_FIELD)));
         }
         return photos;
     }

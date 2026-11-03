@@ -14,6 +14,7 @@ import java.util.HexFormat;
 import java.util.List;
 import java.util.Optional;
 import java.util.Random;
+import java.util.concurrent.locks.LockSupport;
 import java.util.function.Supplier;
 
 import org.junit.jupiter.api.DisplayName;
@@ -114,7 +115,20 @@ class ReportIntegrationTest {
         String rcv = PublicIds.next();
         String ret = PublicIds.next();
 
-        // ── 출고: 시점 시작(기종, 1.1)·진단(배터리 최대 용량, 1.1)이 먼저 오고, 업로드·등급(핀, 1.1)이 오면 바로 봉인 ──
+        OutSealed sealedOut = sealOutAndCheckTimeline(rental, out);
+        List<String[]> rcvPhotos = sealRcvAfterWaiting(rental, rcv, sealedOut.event());
+        checkPublicVerification(sealedOut.verifyPath(), rental, sealedOut.firstPhotoId());
+        checkChangedPhotoBreaksChain(rental, sealedOut.verifyPath(), rcvPhotos.get(1));
+        checkManualSeal(rental, ret);
+        checkOrderViolationAndUnknownRental();
+    }
+
+    /** 출고 봉인 결과: 봉인 이벤트, 공개 검증 경로, 첫 사진 ID(공개 응답에 나오면 안 됨) */
+    private record OutSealed(JsonNode event, String verifyPath, String firstPhotoId) {
+    }
+
+    /** ── 출고: 시점 시작(기종, 1.1)·진단(배터리 최대 용량, 1.1)이 먼저 오고, 업로드·등급(핀, 1.1)이 오면 바로 봉인 ── */
+    private OutSealed sealOutAndCheckTimeline(String rental, String out) throws Exception {
         send("trace.checkpoint.started", envelope11(rental, out) + ",\"checkpointType\":\"OUT\",\"deviceId\":\""
                 + PublicIds.next() + "\",\"serial\":\"TEST-SERIAL-1\",\"modelCode\":\"MBA13-M2\""
                 + ",\"modelName\":\"MacBook Air (M2, 2022)\"");
@@ -148,8 +162,11 @@ class ReportIntegrationTest {
         String verifyUrl = timeline.path("verifyUrl").asText();
         assertThat(verifyUrl).matches("https://gakdo\\.site/verify/[0-9a-f]{32}");
         String verifyPath = "/api/v1/verify/" + verifyUrl.substring(verifyUrl.lastIndexOf('/') + 1);
+        return new OutSealed(sealed1, verifyPath, outPhotos.get(0)[0]);
+    }
 
-        // ── 수령: 진단 없이 등급만 → 기다렸다가(스케줄러가 부르는 것과 같게) 봉인, 앞 기록 해시에 잇는다 ──
+    /** ── 수령: 진단 없이 등급만 → 기다렸다가(스케줄러가 부르는 것과 같게) 봉인, 앞 기록 해시에 잇는다 ── */
+    private List<String[]> sealRcvAfterWaiting(String rental, String rcv, JsonNode sealed1) throws Exception {
         List<String[]> rcvPhotos = uploadPhotos(rental, rcv, 2);
         send("trace.checkpoint.graded", envelope(rental, rcv) + gradedBody("RCV", "B", rcvPhotos));
         assertThat(rabbit.receive("test.record.sealed", 1500)).isNull();
@@ -160,25 +177,32 @@ class ReportIntegrationTest {
         assertThat(chain.path("valid").asBoolean()).isTrue();
         assertThat(chain.path("records")).hasSize(2);
         assertThat(sealed2.path("prevHash").asText()).isNotBlank().isNotEqualTo(sealed1.path("payloadHash").asText());
+        return rcvPhotos;
+    }
 
-        // 공개 검증: 등급·시점·지문·서명 시각만
+    /** 공개 검증: 등급·시점·지문·서명 시각만 */
+    private void checkPublicVerification(String verifyPath, String rental, String outPhotoId) throws Exception {
         JsonNode verify = json.readTree(mvc.perform(get(verifyPath)).andExpect(status().isOk()).andReturn()
                 .getResponse().getContentAsString(StandardCharsets.UTF_8));
         assertThat(verify.path("valid").asBoolean()).isTrue();
         assertThat(verify.path("modelName").asText()).isEqualTo("MacBook Air (M2, 2022)");
         assertThat(verify.path("records").get(1).path("grade").asText()).isEqualTo("B");
         assertThat(verify.path("records").get(0).has("signature")).isFalse();
-        assertThat(verify.toString()).doesNotContain(rental).doesNotContain(outPhotos.get(0)[0]);
+        assertThat(verify.toString()).doesNotContain(rental).doesNotContain(outPhotoId);
+    }
 
-        // ── 사진 한 장을 바꾸면 검증이 실패한다 ──
-        s3.putObject(b -> b.bucket(BUCKET).key(rcvPhotos.get(1)[2]), RequestBody.fromBytes("바꾼 사진".getBytes()));
+    /** ── 사진 한 장을 바꾸면 검증이 실패한다(되돌리면 다시 맞다) ── */
+    private void checkChangedPhotoBreaksChain(String rental, String verifyPath, String[] photo) throws Exception {
+        s3.putObject(b -> b.bucket(BUCKET).key(photo[2]), RequestBody.fromBytes("바꾼 사진".getBytes()));
         JsonNode broken = json.readTree(mvc.perform(get(verifyPath)).andReturn().getResponse().getContentAsString());
         assertThat(broken.path("valid").asBoolean()).isFalse();
         assertThat(getJson("/api/v1/reports/rentals/" + rental).path("chainStatus").asText()).isEqualTo("BROKEN");
-        s3.putObject(b -> b.bucket(BUCKET).key(rcvPhotos.get(1)[2]), RequestBody.fromBytes(bytesOf(rcvPhotos.get(1))));
+        s3.putObject(b -> b.bucket(BUCKET).key(photo[2]), RequestBody.fromBytes(bytesOf(photo)));
         assertThat(getJson("/api/v1/reports/rentals/" + rental + "/chain").path("valid").asBoolean()).isTrue();
+    }
 
-        // ── 반납: 파이프라인 없이 관리자 수동 봉인(사용 기록) ──
+    /** ── 반납: 파이프라인 없이 관리자 수동 봉인(사용 기록) ── */
+    private void checkManualSeal(String rental, String ret) throws Exception {
         String sealUrl = "/api/v1/reports/rentals/" + rental + "/checkpoints/" + ret + "/seal";
         String body = "{\"checkpointType\":\"RET\",\"grade\":\"C\",\"reason\":\"집 PC 꺼짐, 육안 확인 후 봉인\"}";
         mvc.perform(post(sealUrl).with(admin()).contentType(MediaType.APPLICATION_JSON).content(body))
@@ -190,8 +214,10 @@ class ReportIntegrationTest {
         assertThat(log.path("items").get(0).path("checkpointId").asText()).isEqualTo(ret);
         assertThat(log.path("items").get(0).path("sealedBy").asText()).isEqualTo("admin0000000000000001");
         assertThat(getJson("/api/v1/reports/rentals/" + rental + "/chain").path("valid").asBoolean()).isTrue();
+    }
 
-        // 앞 시점(출고)이 없는 렌탈의 수령을 수동 봉인하면 409
+    /** 앞 시점(출고)이 없는 렌탈의 수령을 수동 봉인하면 409, 모르는 렌탈은 404 */
+    private void checkOrderViolationAndUnknownRental() throws Exception {
         String other = PublicIds.next();
         mvc.perform(post("/api/v1/reports/rentals/" + other + "/checkpoints/" + PublicIds.next() + "/seal").with(admin())
                 .contentType(MediaType.APPLICATION_JSON)
@@ -274,13 +300,17 @@ class ReportIntegrationTest {
     }
 
     /** 리스너가 앞 이벤트를 처리할 때까지 잠깐 기다린다. */
-    private static void await(Supplier<Boolean> condition) throws InterruptedException {
+    private static void await(Supplier<Boolean> condition) {
         long until = System.nanoTime() + Duration.ofSeconds(15).toNanos();
         while (System.nanoTime() < until) {
             if (Optional.ofNullable(condition.get()).orElse(false)) {
                 return;
             }
-            Thread.sleep(200);
+            // 다음 확인까지 0.2초 쉰다(인터럽트되면 그만 기다리고 실패로 끝낸다)
+            LockSupport.parkNanos(Duration.ofMillis(200).toNanos());
+            if (Thread.currentThread().isInterrupted()) {
+                break;
+            }
         }
         throw new AssertionError("조건을 기다리다 시간이 지났습니다");
     }

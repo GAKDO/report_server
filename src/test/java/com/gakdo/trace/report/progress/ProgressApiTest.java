@@ -72,9 +72,9 @@ class ProgressApiTest extends WebTestBase {
     void snapshotOnConnect() throws Exception {
         twoCheckpoints();
         String body = open(customer(RENTAL)).getResponse().getContentAsString();
-        assertThat(body).contains("event:done\ndata:{\"checkpointId\":\"" + OTHER_CP + "\",\"grade\":\"B\"}");
-        assertThat(body).contains("event:progress\ndata:{\"checkpointId\":\"" + CHECKPOINT
-                + "\",\"stage\":\"UPLOADED\",\"percent\":20,\"at\":\"2026-11-12T04:20:00Z\"}");
+        assertThat(body).contains("event:done\ndata:{\"checkpointId\":\"" + OTHER_CP + "\",\"grade\":\"B\"}")
+                .contains("event:progress\ndata:{\"checkpointId\":\"" + CHECKPOINT
+                        + "\",\"stage\":\"UPLOADED\",\"percent\":20,\"at\":\"2026-11-12T04:20:00Z\"}");
     }
 
     @Test
