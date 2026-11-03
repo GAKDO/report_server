@@ -18,6 +18,9 @@ import com.gakdo.trace.report.common.domain.DomainException;
 import com.gakdo.trace.report.common.domain.ErrorCode;
 import com.gakdo.trace.report.common.infra.PublicIds;
 import com.gakdo.trace.report.common.infra.Times;
+import com.gakdo.trace.report.progress.application.ProgressNotifier;
+import com.gakdo.trace.report.progress.domain.ProgressStage;
+import com.gakdo.trace.report.progress.domain.ProgressUpdate;
 import com.gakdo.trace.report.record.domain.CanonicalJson;
 import com.gakdo.trace.report.record.domain.ChainHashes;
 import com.gakdo.trace.report.record.domain.ChainRecord;
@@ -49,12 +52,15 @@ public class SealService {
     private final ManualSealLogRepository manualLogs;
     private final ChainSigner signer;
     private final SealedEventPublisher publisher;
+    private final ProgressNotifier progress;
     private final ChainVerifier verifier;
     private final Duration diagnosticsWait;
 
     public SealService(CheckpointViewRepository views, ChainRecordRepository chain, RentalReportRepository reports,
             ManualSealLogRepository manualLogs, ChainSigner signer, SealedEventPublisher publisher,
-            ChainVerifier verifier, @Value("${app.chain.diagnostics-wait:PT1M}") Duration diagnosticsWait) {
+            ChainVerifier verifier, ProgressNotifier progress,
+            @Value("${app.chain.diagnostics-wait:PT1M}") Duration diagnosticsWait) {
+        this.progress = progress;
         this.views = views;
         this.chain = chain;
         this.reports = reports;
@@ -72,6 +78,11 @@ public class SealService {
     /** 자동 봉인. 조건이 안 맞으면 아무것도 하지 않는다(다음 이벤트나 스케줄러가 다시 부른다). */
     @Transactional
     public Optional<ChainRecord> sealIfReady(String checkpointId, OffsetDateTime now) {
+        Optional<String> rentalId = views.findRentalIdByCheckpointId(checkpointId);
+        if (rentalId.isEmpty()) {
+            return Optional.empty();
+        }
+        lockRental(rentalId.get()); // 읽기 전에 잠가 다른 쓰기와 겹치지 않게 한다
         CheckpointView view = views.findByCheckpointId(checkpointId).orElse(null);
         if (view == null || view.status() != CheckpointStatus.GRADED || view.checkpointType() == null) {
             return Optional.empty();
@@ -79,7 +90,6 @@ public class SealService {
         if (!view.hasDiagnostics() && view.gradedAt().plus(diagnosticsWait).isAfter(now)) {
             return Optional.empty(); // 진단을 조금 더 기다린다
         }
-        lockRental(view.rentalId());
         List<ChainRecord> records = chain.findByRentalIdOrderBySeqAsc(view.rentalId());
         if (!previousSealed(records, view.checkpointType())) {
             log.info("앞 시점이 봉인되지 않아 기다립니다: rentalId={} checkpointId={} type={}", view.rentalId(),
@@ -126,7 +136,11 @@ public class SealService {
         reports.insertIfAbsent(rentalId, VerifyTokens.next());
     }
 
-    private void lockRental(String rentalId) {
+    /**
+     * 렌탈 줄을 잠근다. 시점 읽기 모델을 쓰는 트랜잭션은 모두 읽기 전에 이것을 불러, 엔티티 전체를 다시 쓰는 저장이
+     * 서로의 값(봉인·검사 시각 등)을 덮어쓰지 않게 한다.
+     */
+    public void lockRental(String rentalId) {
         ensureRental(rentalId);
         reports.lockByRentalId(rentalId).orElseThrow();
     }
@@ -156,7 +170,9 @@ public class SealService {
         ChainRecord record = chain.save(new ChainRecord(view.rentalId(), view.checkpointId(), type, seq, grade,
                 CanonicalJson.write(payload), payloadHash, prevHash, recordHash, signer.sign(recordHash), signedAt,
                 manual != null));
+        Optional<ProgressStage> before = ProgressUpdate.stageOf(view);
         view.markSealed(signedAt);
+        progress.changed(view, before);
         String eventId = PublicIds.next();
         publisher.publish(eventId, sealedEvent(eventId, record));
         verifier.invalidate(view.rentalId());

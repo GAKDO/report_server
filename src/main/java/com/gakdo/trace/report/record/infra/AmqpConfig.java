@@ -17,7 +17,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 /**
  * trace.events에 report-server 큐 trace.report.updates를 붙인다(설계서 소비 큐). 계약대로 등급·진단을 받고,
  * 검증 때 저장소에서 사진을 다시 보려고 촬영 업로드(사진 객체 키)도 받는다(소비자 추가일 뿐 스키마는 그대로, rental-server와 같은 방식).
- * 계약 1.1부터 rental-server의 시점 시작(기기·기종)도 받는다.
+ * 계약 1.1부터 rental-server의 시점 시작(기기·기종)도 받는다. RP2 진행률을 위해 inspect-worker의 검사 완료도 받는다.
  * 계속 실패한 메시지는 trace.dlx(topic)에 dead-letter 키 trace.report.updates.dead로 보낸다.
  * 채널 트랜잭션을 켜서 봉인 이벤트가 DB 커밋과 함께 나가게 한다.
  */
@@ -34,6 +34,8 @@ public class AmqpConfig {
     public static final String CHECKPOINT_GRADED = "trace.checkpoint.graded";
     public static final String DIAGNOSTICS_RECORDED = "trace.diagnostics.recorded";
     public static final String CHECKPOINT_STARTED = "trace.checkpoint.started";
+    /** RP2 진행률: 검사(정합·탐지) 끝. 스키마는 그대로 두고 소비자만 더한다 */
+    public static final String INSPECT_COMPLETED = "trace.inspect.completed";
 
     @Bean
     Declarables reportTopology() {
@@ -46,6 +48,7 @@ public class AmqpConfig {
                 bind(queue, events, CHECKPOINT_GRADED),
                 bind(queue, events, DIAGNOSTICS_RECORDED),
                 bind(queue, events, CHECKPOINT_STARTED),
+                bind(queue, events, INSPECT_COMPLETED),
                 BindingBuilder.bind(dlq).to(dlx).with(DEAD_KEY));
     }
 

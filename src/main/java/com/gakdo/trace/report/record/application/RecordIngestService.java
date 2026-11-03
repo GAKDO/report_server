@@ -2,6 +2,7 @@ package com.gakdo.trace.report.record.application;
 
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Optional;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -9,6 +10,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.gakdo.trace.report.common.infra.Times;
+import com.gakdo.trace.report.progress.application.ProgressNotifier;
+import com.gakdo.trace.report.progress.domain.ProgressStage;
+import com.gakdo.trace.report.progress.domain.ProgressUpdate;
 import com.gakdo.trace.report.record.domain.CheckpointType;
 import com.gakdo.trace.report.record.domain.CheckpointView;
 import com.gakdo.trace.report.record.domain.Grade;
@@ -47,13 +51,15 @@ public class RecordIngestService {
     private final CheckpointViewRepository views;
     private final SealService seals;
     private final RentalReportRepository reports;
+    private final ProgressNotifier progress;
 
     public RecordIngestService(ProcessedEventRepository processed, CheckpointViewRepository views, SealService seals,
-            RentalReportRepository reports) {
+            RentalReportRepository reports, ProgressNotifier progress) {
         this.processed = processed;
         this.views = views;
         this.seals = seals;
         this.reports = reports;
+        this.progress = progress;
     }
 
     /** 기기·기종만 리포트 줄에 적는다. 시점 종류는 등급 이벤트가 정한다(체인 규칙을 바꾸지 않으려고). */
@@ -73,7 +79,23 @@ public class RecordIngestService {
         if (!firstTime(env)) {
             return false;
         }
-        view(env).recordUpload(captureSetId, env.occurredAt(), photos);
+        CheckpointView view = view(env);
+        Optional<ProgressStage> before = ProgressUpdate.stageOf(view);
+        view.recordUpload(captureSetId, env.occurredAt(), photos);
+        progress.changed(view, before);
+        return true;
+    }
+
+    /** 검사 완료(RP2 진행률). 결과(흠집·정합)는 capture-server가 등급으로 내므로 여기서는 시각만 적는다. */
+    @Transactional
+    public boolean inspected(Envelope env) {
+        if (!firstTime(env)) {
+            return false;
+        }
+        CheckpointView view = view(env);
+        Optional<ProgressStage> before = ProgressUpdate.stageOf(view);
+        view.recordInspected(env.occurredAt());
+        progress.changed(view, before);
         return true;
     }
 
@@ -92,9 +114,11 @@ public class RecordIngestService {
             log.warn("이미 봉인된 시점의 등급 이벤트는 체인을 바꾸지 않습니다: checkpointId={}", env.checkpointId());
             return true;
         }
+        Optional<ProgressStage> before = ProgressUpdate.stageOf(view);
         view.recordPins(graded.pins());
         view.recordGrade(graded.captureSetId(), graded.grade(), graded.ruleVersion(), graded.newDefectIds(),
                 graded.unjudgeableFaces(), graded.photos(), Times.now()); // 진단 대기는 받은 시각부터
+        progress.changed(view, before);
         views.flush();
         seals.sealIfReady(env.checkpointId(), Times.now());
         return true;
@@ -126,7 +150,9 @@ public class RecordIngestService {
         return true;
     }
 
+    /** 렌탈 줄을 먼저 잠그고 읽는다(봉인·다른 이벤트와 같은 순서). */
     private CheckpointView view(Envelope env) {
+        seals.lockRental(env.rentalId());
         CheckpointView view = views.findByCheckpointId(env.checkpointId())
                 .orElseGet(() -> views.save(new CheckpointView(env.rentalId(), env.checkpointId())));
         if (!view.rentalId().equals(env.rentalId())) {

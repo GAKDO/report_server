@@ -13,6 +13,10 @@ public interface CheckpointViewRepository extends JpaRepository<CheckpointView, 
 
     Optional<CheckpointView> findByCheckpointId(String checkpointId);
 
+    /** 잠글 렌탈 줄을 알려고 읽는다(엔티티를 올리지 않음). */
+    @Query("select v.rentalId from CheckpointView v where v.checkpointId = :checkpointId")
+    Optional<String> findRentalIdByCheckpointId(String checkpointId);
+
     List<CheckpointView> findByRentalIdOrderByIdAsc(String rentalId);
 
     /** 등급은 나왔지만 진단을 기다리다 시간이 지난 시점(봉인 대상). */
