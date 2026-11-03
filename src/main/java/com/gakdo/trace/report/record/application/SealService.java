@@ -124,11 +124,11 @@ public class SealService {
             throw new DomainException(ErrorCode.CHECKPOINT_ORDER_VIOLATION, "출고 → 수령 → 반납 순서로 봉인합니다.");
         }
         view.overrideGrade(grade);
-        ChainRecord record = seal(view, type, grade, new SealPayload.Manual(adminId, reason), records);
-        manualLogs.save(new ManualSealLog(rentalId, checkpointId, type, grade, record.seq(), reason, adminId));
+        ChainRecord sealed = seal(view, type, grade, new SealPayload.Manual(adminId, reason), records);
+        manualLogs.save(new ManualSealLog(rentalId, checkpointId, type, grade, sealed.seq(), reason, adminId));
         log.warn("수동 봉인: rentalId={} checkpointId={} type={} grade={} by={}", rentalId, checkpointId, type, grade,
                 adminId);
-        return record;
+        return sealed;
     }
 
     /** 렌탈 줄(검증 토큰)을 없으면 만든다. 이벤트를 처음 받을 때와 수동 봉인 때 부른다. */
@@ -167,34 +167,36 @@ public class SealService {
         OffsetDateTime signedAt = Times.now();
         String recordHash = ChainHashes.recordHash(seq, view.rentalId(), view.checkpointId(), type, payloadHash,
                 prevHash, signedAt);
-        ChainRecord record = chain.save(new ChainRecord(view.rentalId(), view.checkpointId(), type, seq, grade,
-                CanonicalJson.write(payload), payloadHash, prevHash, recordHash, signer.sign(recordHash), signedAt,
+        ChainRecord sealed = chain.save(new ChainRecord(
+                new ChainRecord.Position(view.rentalId(), view.checkpointId(), type, seq), grade,
+                new ChainRecord.Seal(CanonicalJson.write(payload), payloadHash, prevHash, recordHash,
+                        signer.sign(recordHash), signedAt),
                 manual != null));
         Optional<ProgressStage> before = ProgressUpdate.stageOf(view);
         view.markSealed(signedAt);
         progress.changed(view, before);
         String eventId = PublicIds.next();
-        publisher.publish(eventId, sealedEvent(eventId, record));
+        publisher.publish(eventId, sealedEvent(eventId, sealed));
         verifier.invalidate(view.rentalId());
         log.info("봉인: rentalId={} checkpointId={} seq={} type={} grade={} payloadHash={}", view.rentalId(),
                 view.checkpointId(), seq, type, grade, payloadHash);
-        return record;
+        return sealed;
     }
 
     /** contracts events/trace.record.sealed.schema.json 1.0 */
-    static Map<String, Object> sealedEvent(String eventId, ChainRecord record) {
+    static Map<String, Object> sealedEvent(String eventId, ChainRecord sealed) {
         Map<String, Object> event = new LinkedHashMap<>();
         event.put("schemaVersion", "1.0");
         event.put("eventId", eventId);
-        event.put("occurredAt", record.signedAt().toString());
-        event.put("rentalId", record.rentalId());
-        event.put("checkpointId", record.checkpointId());
-        event.put("seq", record.seq());
-        event.put("checkpointType", record.checkpointType().name());
-        event.put("grade", record.grade().name());
-        event.put("payloadHash", record.payloadHash());
-        event.put("prevHash", record.prevHash());
-        event.put("signedAt", record.signedAt().toString());
+        event.put("occurredAt", sealed.signedAt().toString());
+        event.put("rentalId", sealed.rentalId());
+        event.put("checkpointId", sealed.checkpointId());
+        event.put("seq", sealed.seq());
+        event.put("checkpointType", sealed.checkpointType().name());
+        event.put("grade", sealed.grade().name());
+        event.put("payloadHash", sealed.payloadHash());
+        event.put("prevHash", sealed.prevHash());
+        event.put("signedAt", sealed.signedAt().toString());
         return event;
     }
 }

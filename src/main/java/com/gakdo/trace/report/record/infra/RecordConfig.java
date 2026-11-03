@@ -31,7 +31,9 @@ public class RecordConfig {
     ChainSigner chainSigner(@Value("${app.chain.signing-key:}") String key,
             @Value("${app.chain.allow-ephemeral-key:false}") boolean allowEphemeral) {
         Ed25519ChainSigner signer = Ed25519ChainSigner.fromConfig(key, allowEphemeral);
-        log.info("해시 체인 서명 공개 키(Ed25519, raw base64): {}", signer.publicKeyBase64());
+        if (log.isInfoEnabled()) {
+            log.info("해시 체인 서명 공개 키(Ed25519, raw base64): {}", signer.publicKeyBase64());
+        }
         return signer;
     }
 

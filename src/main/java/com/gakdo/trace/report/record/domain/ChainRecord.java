@@ -79,20 +79,27 @@ public class ChainRecord {
     protected ChainRecord() {
     }
 
-    public ChainRecord(String rentalId, String checkpointId, CheckpointType checkpointType, int seq, Grade grade,
-            String payload, String payloadHash, String prevHash, String recordHash, String signature,
-            OffsetDateTime signedAt, boolean manual) {
-        this.rentalId = rentalId;
-        this.checkpointId = checkpointId;
-        this.checkpointType = checkpointType;
-        this.seq = seq;
+    /** 체인에서 이 줄의 자리: 어느 렌탈·시점의 몇 번째 기록인가. */
+    public record Position(String rentalId, String checkpointId, CheckpointType checkpointType, int seq) {
+    }
+
+    /** 봉인 내용과 해시·서명. payload는 정규화 JSON 글자열 그대로. */
+    public record Seal(String payload, String payloadHash, String prevHash, String recordHash, String signature,
+            OffsetDateTime signedAt) {
+    }
+
+    public ChainRecord(Position at, Grade grade, Seal seal, boolean manual) {
+        this.rentalId = at.rentalId();
+        this.checkpointId = at.checkpointId();
+        this.checkpointType = at.checkpointType();
+        this.seq = at.seq();
         this.grade = grade;
-        this.payload = payload;
-        this.payloadHash = payloadHash;
-        this.prevHash = prevHash;
-        this.recordHash = recordHash;
-        this.signature = signature;
-        this.signedAt = signedAt;
+        this.payload = seal.payload();
+        this.payloadHash = seal.payloadHash();
+        this.prevHash = seal.prevHash();
+        this.recordHash = seal.recordHash();
+        this.signature = seal.signature();
+        this.signedAt = seal.signedAt();
         this.manual = manual;
     }
 

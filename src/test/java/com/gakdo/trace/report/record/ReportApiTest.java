@@ -57,8 +57,9 @@ class ReportApiTest extends WebTestBase {
     @MockitoBean
     private SealService seals;
 
-    private static ChainRecord record() {
-        return new ChainRecord(RENTAL, CP, CheckpointType.OUT, 1, Grade.A, "{}", HASH, null, HASH, "c2ln", AT, false);
+    private static ChainRecord chainRecord() {
+        return new ChainRecord(new ChainRecord.Position(RENTAL, CP, CheckpointType.OUT, 1), Grade.A,
+                new ChainRecord.Seal("{}", HASH, null, HASH, "c2ln", AT), false);
     }
 
     private void timelineExists() {
@@ -112,7 +113,7 @@ class ReportApiTest extends WebTestBase {
     @Test
     @DisplayName("체인 전체는 관리자만: 서명·이전 해시까지 보이고 고객은 403")
     void chainIsAdminOnly() throws Exception {
-        when(queries.chain(RENTAL)).thenReturn(new ReportQueryService.Chain(RENTAL, true, List.of(record())));
+        when(queries.chain(RENTAL)).thenReturn(new ReportQueryService.Chain(RENTAL, true, List.of(chainRecord())));
         mvc.perform(get("/api/v1/reports/rentals/" + RENTAL + "/chain").with(admin()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.valid").value(true))
@@ -127,7 +128,7 @@ class ReportApiTest extends WebTestBase {
     @DisplayName("공개 검증은 로그인 없이 등급·시점·지문·서명 시각만 주고, 서명·사진·렌탈 ID는 없다")
     void publicVerifyHasNoDetails() throws Exception {
         String token = "ab".repeat(16);
-        when(queries.verify(token)).thenReturn(Optional.of(new ReportQueryService.Verification(true, "MacBook Air (M2, 2022)", List.of(record()), AT)));
+        when(queries.verify(token)).thenReturn(Optional.of(new ReportQueryService.Verification(true, "MacBook Air (M2, 2022)", List.of(chainRecord()), AT)));
         mvc.perform(get("/api/v1/verify/" + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.valid").value(true))
@@ -151,7 +152,7 @@ class ReportApiTest extends WebTestBase {
         String url = "/api/v1/reports/rentals/" + RENTAL + "/checkpoints/" + CP + "/seal";
         String body = "{\"checkpointType\":\"OUT\",\"grade\":\"A\",\"reason\":\"집 PC 꺼짐, 육안 확인\"}";
         when(seals.sealManually(eq(RENTAL), eq(CP), eq(CheckpointType.OUT), eq(Grade.A), anyString(), anyString()))
-                .thenReturn(record());
+                .thenReturn(chainRecord());
         mvc.perform(post(url).with(admin()).contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isCreated()).andExpect(jsonPath("$.seq").value(1));
 

@@ -55,22 +55,26 @@ class RecordEventListenerTest {
     @DisplayName("좌표가 음수이거나 isNew가 참·거짓이 아닌 핀은 다시 시도하지 않고 거절한다")
     void badPinIsRejected() {
         String defect = PublicIds.next();
-        assertThatThrownBy(() -> listener.handle("trace.checkpoint.graded", graded("1.1", ",\"pins\":[{\"defectId\":\""
-                + defect + "\",\"face\":\"TOP\",\"x\":-1,\"y\":0,\"isNew\":true}]")))
+        String negative = graded("1.1", ",\"pins\":[{\"defectId\":\""
+                + defect + "\",\"face\":\"TOP\",\"x\":-1,\"y\":0,\"isNew\":true}]");
+        String notBoolean = graded("1.1", ",\"pins\":[{\"defectId\":\""
+                + defect + "\",\"face\":\"TOP\",\"x\":1,\"y\":0,\"isNew\":\"yes\"}]");
+        assertThatThrownBy(() -> listener.handle("trace.checkpoint.graded", negative))
                 .isInstanceOf(AmqpRejectAndDontRequeueException.class);
-        assertThatThrownBy(() -> listener.handle("trace.checkpoint.graded", graded("1.1", ",\"pins\":[{\"defectId\":\""
-                + defect + "\",\"face\":\"TOP\",\"x\":1,\"y\":0,\"isNew\":\"yes\"}]")))
+        assertThatThrownBy(() -> listener.handle("trace.checkpoint.graded", notBoolean))
                 .isInstanceOf(AmqpRejectAndDontRequeueException.class);
     }
 
     @Test
     @DisplayName("pins가 배열이 아니거나 기종 이름이 128자를 넘으면 거절한다")
     void malformedOptionalFieldsAreRejected() {
-        assertThatThrownBy(() -> listener.handle("trace.checkpoint.graded", graded("1.1", ",\"pins\":{}")))
-                .isInstanceOf(AmqpRejectAndDontRequeueException.class);
-        assertThatThrownBy(() -> listener.handle("trace.checkpoint.started", envelope("1.1")
+        String pinsObject = graded("1.1", ",\"pins\":{}");
+        String longModelName = envelope("1.1")
                 + ",\"checkpointType\":\"OUT\",\"deviceId\":\"" + PublicIds.next() + "\",\"serial\":\"S1\""
-                + ",\"modelCode\":\"MBA13-M2\",\"modelName\":\"" + "a".repeat(129) + "\"}"))
+                + ",\"modelCode\":\"MBA13-M2\",\"modelName\":\"" + "a".repeat(129) + "\"}";
+        assertThatThrownBy(() -> listener.handle("trace.checkpoint.graded", pinsObject))
+                .isInstanceOf(AmqpRejectAndDontRequeueException.class);
+        assertThatThrownBy(() -> listener.handle("trace.checkpoint.started", longModelName))
                 .isInstanceOf(AmqpRejectAndDontRequeueException.class);
     }
 
@@ -88,8 +92,8 @@ class RecordEventListenerTest {
         verify(ingest, times(3)).diagnostics(any(), captor.capture());
         assertThat(captor.getAllValues()).extracting(RecordIngestService.Diagnostics::maxCapacityPct)
                 .containsExactly(89.02, null, null);
-        assertThatThrownBy(() -> listener.handle("trace.diagnostics.recorded",
-                envelope("1.1") + base + ",\"maxCapacityPct\":250}"))
+        String outOfRange = envelope("1.1") + base + ",\"maxCapacityPct\":250}";
+        assertThatThrownBy(() -> listener.handle("trace.diagnostics.recorded", outOfRange))
                 .isInstanceOf(AmqpRejectAndDontRequeueException.class);
     }
 

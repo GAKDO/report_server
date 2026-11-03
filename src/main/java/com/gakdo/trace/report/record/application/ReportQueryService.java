@@ -69,9 +69,17 @@ public class ReportQueryService {
                 .sorted(Comparator.comparing(CheckpointView::checkpointType))
                 .toList();
         List<ChainRecord> records = chain.findByRentalIdOrderBySeqAsc(rentalId);
-        String status = records.isEmpty() ? "PENDING" : verifier.verify(rentalId, records).valid() ? "VALID" : "BROKEN";
+        String status = chainStatus(rentalId, records);
         String verifyUrl = records.isEmpty() ? null : webPublicUrl + "/verify/" + report.verifyToken();
         return new Timeline(rentalId, orEmpty(report.modelCode()), status, verifyUrl, typed);
+    }
+
+    /** 봉인 기록이 없으면 PENDING, 있으면 검증 결과에 따라 VALID·BROKEN. */
+    private String chainStatus(String rentalId, List<ChainRecord> records) {
+        if (records.isEmpty()) {
+            return "PENDING";
+        }
+        return verifier.verify(rentalId, records).valid() ? "VALID" : "BROKEN";
     }
 
     public Chain chain(String rentalId) {

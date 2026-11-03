@@ -1,7 +1,6 @@
 package com.gakdo.trace.report.record.domain;
 
 import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
@@ -31,29 +30,9 @@ public final class CanonicalJson {
         if (node == null || node.isNull() || node.isMissingNode()) {
             out.append("null");
         } else if (node.isObject()) {
-            List<Map.Entry<String, JsonNode>> fields = new ArrayList<>();
-            for (Iterator<Map.Entry<String, JsonNode>> it = node.fields(); it.hasNext();) {
-                fields.add(it.next());
-            }
-            fields.sort(Map.Entry.comparingByKey());
-            out.append('{');
-            for (int i = 0; i < fields.size(); i++) {
-                if (i > 0) {
-                    out.append(',');
-                }
-                out.append(quote(fields.get(i).getKey())).append(':');
-                append(fields.get(i).getValue(), out);
-            }
-            out.append('}');
+            appendObject(node, out);
         } else if (node.isArray()) {
-            out.append('[');
-            for (int i = 0; i < node.size(); i++) {
-                if (i > 0) {
-                    out.append(',');
-                }
-                append(node.get(i), out);
-            }
-            out.append(']');
+            appendArray(node, out);
         } else if (node.isTextual()) {
             out.append(quote(node.textValue()));
         } else if (node.isIntegralNumber() || node.isBoolean()) {
@@ -61,6 +40,33 @@ public final class CanonicalJson {
         } else {
             throw new IllegalArgumentException("봉인 내용에는 정수·문자열·불리언·null만 넣습니다: " + node.getNodeType());
         }
+    }
+
+    /** 객체: 키 사전순, {"키":값,...} */
+    private static void appendObject(JsonNode node, StringBuilder out) {
+        List<Map.Entry<String, JsonNode>> fields = new ArrayList<>(node.properties());
+        fields.sort(Map.Entry.comparingByKey());
+        out.append('{');
+        for (int i = 0; i < fields.size(); i++) {
+            if (i > 0) {
+                out.append(',');
+            }
+            out.append(quote(fields.get(i).getKey())).append(':');
+            append(fields.get(i).getValue(), out);
+        }
+        out.append('}');
+    }
+
+    /** 배열: 순서 그대로, [값,...] */
+    private static void appendArray(JsonNode node, StringBuilder out) {
+        out.append('[');
+        for (int i = 0; i < node.size(); i++) {
+            if (i > 0) {
+                out.append(',');
+            }
+            append(node.get(i), out);
+        }
+        out.append(']');
     }
 
     private static String quote(String value) {
