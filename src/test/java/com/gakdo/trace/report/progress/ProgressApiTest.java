@@ -123,4 +123,14 @@ class ProgressApiTest extends WebTestBase {
         assertThat(body).doesNotContain("GRADED");
         assertThat(body.split("event:done", -1)).hasSize(2);
     }
+
+    @Test
+    @DisplayName("처음 붙을 때 지금 단계를 읽지 못하면 오류로 끝나고, 그 연결은 구독자로 남지 않는다")
+    void failedSnapshotLeavesNoSubscriber() throws Exception {
+        when(views.findByRentalIdOrderByIdAsc(RENTAL)).thenThrow(new IllegalStateException("DB 끊김"));
+        int before = streams.subscribers(RENTAL);
+        mvc.perform(get("/api/v1/reports/rentals/" + RENTAL + "/stream").accept(MediaType.TEXT_EVENT_STREAM)
+                .with(customer(RENTAL))).andExpect(status().is5xxServerError());
+        assertThat(streams.subscribers(RENTAL)).isEqualTo(before);
+    }
 }

@@ -79,13 +79,25 @@ public class ProgressStreams {
         emitter.onError(e -> remove.run());
         // 스냅샷을 다 보낼 때까지 실시간 알림을 막아, 늦은 스냅샷이 단계를 뒤로 돌리지 않게 한다
         synchronized (set) {
-            views.findByRentalIdOrderByIdAsc(rentalId).stream()
-                    .map(ProgressUpdate::of)
-                    .flatMap(java.util.Optional::stream)
-                    .filter(subscriber::wants)
-                    .forEach(update -> send(rentalId, subscriber, update));
+            try {
+                views.findByRentalIdOrderByIdAsc(rentalId).stream()
+                        .map(ProgressUpdate::of)
+                        .flatMap(java.util.Optional::stream)
+                        .filter(subscriber::wants)
+                        .forEach(update -> send(rentalId, subscriber, update));
+            } catch (RuntimeException e) {
+                // 연결을 돌려주지 못하면 완료·시간 초과 콜백도 오지 않으므로 여기서 지운다(응답은 오류로 나간다)
+                remove.run();
+                throw e;
+            }
         }
         return emitter;
+    }
+
+    /** 이 렌탈에 붙어 있는 연결 수(확인용). */
+    public int subscribers(String rentalId) {
+        Set<Subscriber> set = byRental.get(rentalId);
+        return set == null ? 0 : set.size();
     }
 
     /** 읽기 모델 트랜잭션이 커밋된 뒤에만 보낸다(롤백된 단계가 화면에 보이지 않게). */
