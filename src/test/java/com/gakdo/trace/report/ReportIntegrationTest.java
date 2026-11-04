@@ -121,6 +121,21 @@ class ReportIntegrationTest {
         checkChangedPhotoBreaksChain(rental, sealedOut.verifyPath(), rcvPhotos.get(1));
         checkManualSeal(rental, ret);
         checkOrderViolationAndUnknownRental();
+        checkTestPurge(rental, out);
+    }
+
+    /** 시험 렌탈 지우기(trace.checkpoint.purged, 시리얼 TEST-): 렌탈의 체인·시점·리포트가 모두 사라져 타임라인이 404 */
+    private void checkTestPurge(String rental, String out) throws Exception {
+        send("trace.checkpoint.purged", envelope(rental, out) + ",\"checkpointType\":\"OUT\",\"deviceId\":\""
+                + PublicIds.next() + "\",\"serial\":\"TEST-SERIAL-1\"");
+        await(() -> {
+            try {
+                return mvc.perform(get("/api/v1/reports/rentals/" + rental).with(admin())).andReturn().getResponse()
+                        .getStatus() == 404;
+            } catch (Exception e) {
+                return false;
+            }
+        });
     }
 
     /** 출고 봉인 결과: 봉인 이벤트, 공개 검증 경로, 첫 사진 ID(공개 응답에 나오면 안 됨) */

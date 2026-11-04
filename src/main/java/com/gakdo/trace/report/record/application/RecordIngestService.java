@@ -52,14 +52,27 @@ public class RecordIngestService {
     private final SealService seals;
     private final RentalReportRepository reports;
     private final ProgressNotifier progress;
+    private final RecordPurgeStore purges;
 
     public RecordIngestService(ProcessedEventRepository processed, CheckpointViewRepository views, SealService seals,
-            RentalReportRepository reports, ProgressNotifier progress) {
+            RentalReportRepository reports, ProgressNotifier progress, RecordPurgeStore purges) {
         this.processed = processed;
         this.views = views;
         this.seals = seals;
         this.reports = reports;
         this.progress = progress;
+        this.purges = purges;
+    }
+
+    /**
+     * 시험 렌탈 지우기(trace.checkpoint.purged, 11/4 민서 요청): 그 렌탈의 기록 체인·시점 줄·수동 봉인 기록·리포트를 지운다.
+     * 시험 데이터만(리스너가 시리얼 TEST-를 확인). 렌탈째 지우므로 시점마다 와도 결과가 같다(멱등).
+     */
+    @Transactional
+    public boolean purged(Envelope env) {
+        int rows = purges.deleteRental(env.rentalId());
+        log.info("시험 렌탈 기록 지움 rental={} checkpoint={} 행={}", env.rentalId(), env.checkpointId(), rows);
+        return rows > 0;
     }
 
     /** 기기·기종만 리포트 줄에 적는다. 시점 종류는 등급 이벤트가 정한다(체인 규칙을 바꾸지 않으려고). */

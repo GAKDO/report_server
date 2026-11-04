@@ -34,6 +34,8 @@ public class AmqpConfig {
     public static final String CHECKPOINT_GRADED = "trace.checkpoint.graded";
     public static final String DIAGNOSTICS_RECORDED = "trace.diagnostics.recorded";
     public static final String CHECKPOINT_STARTED = "trace.checkpoint.started";
+    /** 시험 렌탈 지우기(rental-server, 11/4) */
+    public static final String CHECKPOINT_PURGED = "trace.checkpoint.purged";
     /** RP2 진행률: 검사(정합·탐지) 끝. 스키마는 그대로 두고 소비자만 더한다 */
     public static final String INSPECT_COMPLETED = "trace.inspect.completed";
 
@@ -49,6 +51,7 @@ public class AmqpConfig {
                 bind(queue, events, DIAGNOSTICS_RECORDED),
                 bind(queue, events, CHECKPOINT_STARTED),
                 bind(queue, events, INSPECT_COMPLETED),
+                bind(queue, events, CHECKPOINT_PURGED),
                 BindingBuilder.bind(dlq).to(dlx).with(DEAD_KEY));
     }
 
