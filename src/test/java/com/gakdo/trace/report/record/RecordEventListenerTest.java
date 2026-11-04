@@ -120,4 +120,16 @@ class RecordEventListenerTest {
         assertThat(done).isTrue();
         verify(ingest).inspected(any());
     }
+
+    @Test
+    @DisplayName("시험 시점 지움 이벤트(시리얼 TEST-)는 렌탈 기록을 지우고, 실제 시리얼이면 지우지 않고 거절한다")
+    void purgeOnlyTestData() {
+        when(ingest.purged(any())).thenReturn(true);
+        String base = envelope("1.0") + ",\"checkpointType\":\"OUT\",\"deviceId\":\"" + PublicIds.next() + "\"";
+        assertThat(listener.handle("trace.checkpoint.purged", base + ",\"serial\":\"TEST-0002\"}")).isTrue();
+        verify(ingest, times(1)).purged(any());
+        assertThatThrownBy(() -> listener.handle("trace.checkpoint.purged", base + ",\"serial\":\"C02REAL0001\"}"))
+                .isInstanceOf(AmqpRejectAndDontRequeueException.class);
+        verify(ingest, times(1)).purged(any());
+    }
 }

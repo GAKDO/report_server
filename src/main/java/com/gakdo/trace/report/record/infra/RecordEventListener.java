@@ -37,6 +37,7 @@ public class RecordEventListener {
     private static final Pattern SHA256 = Pattern.compile("^[0-9a-f]{64}$");
     /** 이벤트에서 SHA-256 지문을 담는 필드 이름(contracts events) */
     private static final String SHA256_FIELD = "sha256";
+    private static final String TEST_SERIAL_PREFIX = "TEST-";
 
     private final RecordIngestService ingest;
     private final ObjectMapper mapper;
@@ -69,6 +70,7 @@ public class RecordEventListener {
                     new RecordIngestService.Started(publicId(event, "deviceId"), text(event, "serial", 64),
                             text(event, "modelCode", 64), text(event, "modelName", 128)));
             case AmqpConfig.INSPECT_COMPLETED -> ingest.inspected(envelope(routingKey, event));
+            case AmqpConfig.CHECKPOINT_PURGED -> ingest.purged(testPurge(routingKey, event));
             default -> {
                 log.warn("받지 않는 라우팅 키를 건너뜁니다: {}", routingKey);
                 yield false;
@@ -90,6 +92,14 @@ public class RecordEventListener {
         }
         return new Envelope(publicId(event, "eventId"), routingKey, publicId(event, "rentalId"),
                 publicId(event, "checkpointId"), occurredAt);
+    }
+
+    /** 시험 데이터(시리얼 TEST-)만 지운다. 아니면 지우지 않고 DLX로 보낸다(실제 기록을 잘못 지우지 않게). */
+    private Envelope testPurge(String routingKey, JsonNode event) {
+        if (!text(event, "serial").startsWith(TEST_SERIAL_PREFIX)) {
+            throw reject("시험 데이터가 아닌 시점 지움 이벤트는 처리하지 않습니다");
+        }
+        return envelope(routingKey, event);
     }
 
     private RecordIngestService.Graded graded(JsonNode event) {
