@@ -39,6 +39,14 @@ public class ReportQueryService {
     public record Verification(boolean valid, String modelName, List<ChainRecord> records, OffsetDateTime checkedAt) {
     }
 
+    /** 기록 검색 한 줄. chainStatus는 codes.yaml report.chain_status */
+    public record SearchHit(String rentalId, String serial, String modelCode, String chainStatus,
+            OffsetDateTime updatedAt) {
+    }
+
+    public record SearchPage(List<SearchHit> items, String nextCursor) {
+    }
+
     public record ManualSeals(List<ManualSealLog> items, String nextCursor) {
     }
 
@@ -108,22 +116,52 @@ public class ReportQueryService {
         return new ManualSeals(List.copyOf(items), encodeCursor(items.get(items.size() - 1).id()));
     }
 
+    /**
+     * 시리얼·렌탈 ID 일부로 렌탈 기록을 찾는다(FR-RPT-05, 관리자). LIKE 특수문자는 글자로 본다.
+     * 커서는 마지막 줄의 내부 id라 새 기록이 생겨도 다음 쪽이 밀리지 않는다.
+     */
+    @Transactional(readOnly = true)
+    public SearchPage search(String q, int limit, String cursor) {
+        String needle = q == null ? "" : q.strip();
+        if (needle.length() < 2 || needle.length() > 64) {
+            throw DomainException.invalid("q", "검색어는 2~64자입니다.");
+        }
+        String pattern = "%" + needle.toLowerCase(java.util.Locale.ROOT)
+                .replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%";
+        long before = cursor == null || cursor.isBlank() ? Long.MAX_VALUE : decodeCursor(cursor, "s:");
+        List<RentalReport> rows = reports.search(pattern, before, PageRequest.of(0, limit + 1));
+        List<RentalReport> page = rows.size() > limit ? rows.subList(0, limit) : rows;
+        List<SearchHit> items = page.stream().map(r -> new SearchHit(r.rentalId(), orEmpty(r.serial()),
+                orEmpty(r.modelCode()), chainStatus(r.rentalId(), chain.findByRentalIdOrderBySeqAsc(r.rentalId())),
+                r.updatedAt())).toList();
+        String next = rows.size() > limit ? encodeCursor(page.get(page.size() - 1).id(), "s:") : null;
+        return new SearchPage(items, next);
+    }
+
     /** checkpoint.started가 아직 안 왔으면(1.0 생산자) 계약의 필수 문자열을 빈 값으로 채운다. */
     private static String orEmpty(String value) {
         return value == null ? "" : value;
     }
 
     static String encodeCursor(long id) {
-        return Base64.getUrlEncoder().withoutPadding().encodeToString(("m:" + id).getBytes(StandardCharsets.UTF_8));
+        return encodeCursor(id, "m:");
     }
 
     static long decodeCursor(String cursor) {
+        return decodeCursor(cursor, "m:");
+    }
+
+    private static String encodeCursor(long id, String kind) {
+        return Base64.getUrlEncoder().withoutPadding().encodeToString((kind + id).getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static long decodeCursor(String cursor, String kind) {
         try {
             String text = new String(Base64.getUrlDecoder().decode(cursor), StandardCharsets.UTF_8);
-            if (!text.startsWith("m:")) {
+            if (!text.startsWith(kind)) {
                 throw new IllegalArgumentException();
             }
-            return Long.parseLong(text.substring(2));
+            return Long.parseLong(text.substring(kind.length()));
         } catch (IllegalArgumentException e) {
             throw DomainException.invalid("cursor", "cursor가 올바르지 않습니다.");
         }

@@ -78,4 +78,6 @@ public class RentalReport {
     public String serial() { return serial; }
     public String modelCode() { return modelCode; }
     public String modelName() { return modelName; }
+    public Long id() { return id; }
+    public OffsetDateTime updatedAt() { return updatedAt; }
 }

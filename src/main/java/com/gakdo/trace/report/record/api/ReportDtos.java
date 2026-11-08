@@ -3,6 +3,7 @@ package com.gakdo.trace.report.record.api;
 import java.time.OffsetDateTime;
 import java.util.List;
 
+import com.gakdo.trace.report.record.application.ReportQueryService;
 import com.gakdo.trace.report.record.domain.ChainRecord;
 import com.gakdo.trace.report.record.domain.CheckpointType;
 import com.gakdo.trace.report.record.domain.CheckpointView;
@@ -91,5 +92,21 @@ public final class ReportDtos {
     }
 
     public record ManualSealPage(List<ManualSealItem> items, String nextCursor) {
+    }
+
+    /** contracts ReportSearchPage */
+    public record ReportSearchItem(String rentalId, String serial, String modelCode, String chainStatus,
+            OffsetDateTime updatedAt) {
+
+        static ReportSearchItem of(ReportQueryService.SearchHit h) {
+            return new ReportSearchItem(h.rentalId(), h.serial(), h.modelCode(), h.chainStatus(), h.updatedAt());
+        }
+    }
+
+    public record ReportSearchPage(List<ReportSearchItem> items, String nextCursor) {
+
+        public static ReportSearchPage of(ReportQueryService.SearchPage page) {
+            return new ReportSearchPage(page.items().stream().map(ReportSearchItem::of).toList(), page.nextCursor());
+        }
     }
 }

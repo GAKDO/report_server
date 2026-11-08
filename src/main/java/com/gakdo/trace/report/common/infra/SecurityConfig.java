@@ -46,12 +46,13 @@ public class SecurityConfig {
                         .dispatcherTypeMatchers(DispatcherType.ASYNC).permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/reports/ping", "/api/v1/verify/*").permitAll()
                         .requestMatchers("/actuator/health/**", "/actuator/health", "/actuator/info").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/v1/reports/rentals/*/chain", "/api/v1/reports/manual-seals")
+                        .requestMatchers(HttpMethod.GET, "/api/v1/reports/rentals/*/chain", "/api/v1/reports/manual-seals",
+                                "/api/v1/reports/search")
                         .hasRole(ADMIN)
                         .requestMatchers(HttpMethod.POST, "/api/v1/reports/rentals/*/checkpoints/*/seal").hasRole(ADMIN)
                         .requestMatchers(HttpMethod.GET, "/api/v1/reports/rentals/*").hasAnyRole(ADMIN, CUSTOMER)
                         .requestMatchers(HttpMethod.GET, "/api/v1/reports/rentals/*/stream").hasAnyRole(ADMIN, CUSTOMER)
-                        // 검색(선택)은 아직 없다
+                        // 검색(FR-RPT-05)은 위 관리자 규칙
                         .anyRequest().denyAll())
                 .oauth2ResourceServer(o -> o
                         .jwt(jwt -> jwt.jwtAuthenticationConverter(roleConverter()))
