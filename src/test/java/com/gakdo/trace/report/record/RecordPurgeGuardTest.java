@@ -58,6 +58,17 @@ class RecordPurgeGuardTest {
         verify(purges, never()).deleteRental(anyString());
     }
 
+    @Test
+    @DisplayName("뒤에 온 시점 시작 이벤트가 TEST- 시리얼을 보내도 처음 적힌 실제 시리얼은 바뀌지 않는다")
+    void laterStartedCannotRewriteSerial() throws Exception {
+        RentalReport r = report("C02XK1JHMD6R");
+        r.recordDevice("dev_00000000000000001", "TEST-0002", "MBA13-M2", "MacBook Air 13 M2");
+        assertThat(r.serial()).isEqualTo("C02XK1JHMD6R");
+        when(reports.findByRentalId(RENTAL)).thenReturn(Optional.of(r));
+        assertThat(ingest.purged(envelope())).isFalse();
+        verify(purges, never()).deleteRental(anyString());
+    }
+
     private static Envelope envelope() {
         return new Envelope("evt_00000000000000001", "trace.checkpoint.purged", RENTAL, "cp_000000000000000001",
                 OffsetDateTime.parse("2026-11-08T10:00:00Z"));

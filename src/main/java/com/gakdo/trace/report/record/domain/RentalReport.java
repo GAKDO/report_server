@@ -54,9 +54,12 @@ public class RentalReport {
     }
 
     /** checkpoint.started가 알려 준 기기·기종. 렌탈 중 기기는 바뀌지 않지만 늦게 온 값이 덮어도 같은 값이다. */
+    /** 렌탈 하나는 기기 하나라 처음 적힌 시리얼은 바꾸지 않는다(뒤 이벤트가 TEST-로 덮어써 시험 지우기를 통과하지 못하게). */
     public void recordDevice(String device, String serialNo, String code, String name) {
         deviceId = device;
-        serial = serialNo;
+        if (serial == null) {
+            serial = serialNo;
+        }
         modelCode = code;
         modelName = name;
     }
