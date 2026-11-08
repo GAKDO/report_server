@@ -50,6 +50,14 @@ class RecordPurgeGuardTest {
         assertThat(ingest.purged(envelope())).isTrue();
     }
 
+    @Test
+    @DisplayName("리포트는 있는데 저장된 시리얼을 아직 모르면 지우지 않는다")
+    void unknownSerialIsKept() throws Exception {
+        when(reports.findByRentalId(RENTAL)).thenReturn(Optional.of(report(null)));
+        assertThat(ingest.purged(envelope())).isFalse();
+        verify(purges, never()).deleteRental(anyString());
+    }
+
     private static Envelope envelope() {
         return new Envelope("evt_00000000000000001", "trace.checkpoint.purged", RENTAL, "cp_000000000000000001",
                 OffsetDateTime.parse("2026-11-08T10:00:00Z"));

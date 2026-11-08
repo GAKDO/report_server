@@ -74,8 +74,10 @@ public class RecordIngestService {
     public boolean purged(Envelope env) {
         // 이벤트의 시리얼만 믿지 않는다. 이 렌탈에 저장된 기기 시리얼이 시험(TEST-)이 아니면 지우지 않는다
         // (같은 브로커 계정을 쓰는 다른 구성요소가 실제 고객 렌탈의 봉인 기록을 지우지 못하게)
-        String stored = reports.findByRentalId(env.rentalId()).map(RentalReport::serial).orElse(null);
-        if (stored != null && !stored.startsWith(TEST_SERIAL_PREFIX)) {
+        // 리포트가 있는데 시리얼을 아직 모르면(started 전) 시험인지 확인할 수 없으므로 지우지 않는다(남아도 시험 데이터일 뿐)
+        java.util.Optional<RentalReport> report = reports.findByRentalId(env.rentalId());
+        if (report.isPresent() && (report.get().serial() == null
+                || !report.get().serial().startsWith(TEST_SERIAL_PREFIX))) {
             log.warn("시험 기기가 아닌 렌탈의 지움 이벤트를 무시함 rental={} checkpoint={}", env.rentalId(), env.checkpointId());
             return false;
         }
