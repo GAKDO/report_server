@@ -187,4 +187,17 @@ class ReportApiTest extends WebTestBase {
         mvc.perform(get("/api/v1/reports/manual-seals").with(customer(RENTAL))).andExpect(status().isForbidden());
         verifyNoInteractions(seals);
     }
+
+    @Test
+    @DisplayName("기록 검색은 관리자만, 검색어 2~64자, 결과는 계약 ReportSearchPage 모양")
+    void searchReports() throws Exception {
+        when(queries.search("C02", 20, null)).thenReturn(new ReportQueryService.SearchPage(List.of(
+                new ReportQueryService.SearchHit(RENTAL, "C02EXAMPLE01", "MBA13-M2", "VALID", AT)), null));
+        mvc.perform(get("/api/v1/reports/search?q=C02").with(admin()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[0].serial").value("C02EXAMPLE01"))
+                .andExpect(jsonPath("$.items[0].chainStatus").value("VALID"));
+        mvc.perform(get("/api/v1/reports/search?q=C").with(admin())).andExpect(status().isBadRequest());
+        mvc.perform(get("/api/v1/reports/search?q=C02").with(customer(RENTAL))).andExpect(status().isForbidden());
+    }
 }

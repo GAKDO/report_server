@@ -1,6 +1,9 @@
 package com.gakdo.trace.report.record.infra;
 
+import java.util.List;
 import java.util.Optional;
+
+import org.springframework.data.domain.Pageable;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
@@ -27,4 +30,9 @@ public interface RentalReportRepository extends JpaRepository<RentalReport, Long
     Optional<RentalReport> findByRentalId(String rentalId);
 
     Optional<RentalReport> findByVerifyToken(String verifyToken);
+
+    /** 기록 검색(FR-RPT-05): 시리얼·렌탈 ID 일부(대소문자 무시). id 내림차순 키셋 페이지(beforeId 미만). */
+    @Query("select r from RentalReport r where r.id < :beforeId and (lower(r.serial) like :pattern"
+            + " or lower(r.rentalId) like :pattern) order by r.id desc")
+    List<RentalReport> search(String pattern, long beforeId, Pageable page);
 }

@@ -20,6 +20,7 @@ import com.gakdo.trace.report.record.api.ReportDtos.ManualSealItem;
 import com.gakdo.trace.report.record.api.ReportDtos.ManualSealPage;
 import com.gakdo.trace.report.record.api.ReportDtos.ManualSealRequest;
 import com.gakdo.trace.report.record.api.ReportDtos.RentalTimelineResponse;
+import com.gakdo.trace.report.record.api.ReportDtos.ReportSearchPage;
 import com.gakdo.trace.report.record.api.ReportDtos.TimelineCheckpointResponse;
 import com.gakdo.trace.report.record.application.ReportQueryService;
 import com.gakdo.trace.report.record.application.SealService;
@@ -27,6 +28,7 @@ import com.gakdo.trace.report.record.application.SealService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Size;
 import jakarta.validation.constraints.Pattern;
 
 /** 타임라인(FR-RPT-03)·해시 체인(FR-INT-01)·관리자 수동 봉인(11/2 결정). 역할은 SecurityConfig, 렌탈 범위는 Caller. */
@@ -71,5 +73,13 @@ public class ReportController {
             @RequestParam(required = false) String cursor) {
         ReportQueryService.ManualSeals page = queries.manualSeals(limit, cursor);
         return new ManualSealPage(page.items().stream().map(ManualSealItem::of).toList(), page.nextCursor());
+    }
+
+    /** 기록 검색(FR-RPT-05, 관리자): 시리얼·렌탈 ID 일부. */
+    @GetMapping("/api/v1/reports/search")
+    public ReportSearchPage search(@RequestParam @Size(min = 2, max = 64) String q,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int limit,
+            @RequestParam(required = false) String cursor) {
+        return ReportSearchPage.of(queries.search(q, limit, cursor));
     }
 }
