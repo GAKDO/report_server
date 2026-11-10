@@ -125,7 +125,7 @@ class ReportIntegrationTest {
     }
 
     /** 시험 렌탈 지우기(trace.checkpoint.purged, 시리얼 TEST-): 렌탈의 체인·시점·리포트가 모두 사라져 타임라인이 404 */
-    private void checkTestPurge(String rental, String out) throws Exception {
+    private void checkTestPurge(String rental, String out) {
         send("trace.checkpoint.purged", envelope(rental, out) + ",\"checkpointType\":\"OUT\",\"deviceId\":\""
                 + PublicIds.next() + "\",\"serial\":\"TEST-SERIAL-1\"");
         await(() -> {
