@@ -9,8 +9,13 @@ import com.gakdo.trace.report.record.application.RecordPurgeStore;
 @Repository
 public class JdbcRecordPurgeStore implements RecordPurgeStore {
 
-    private static final String[] TABLES = {
-        "report.record_chain", "report.checkpoint_view", "report.manual_seal_log", "report.report_view", "report.report"
+    /** 표 이름을 문장에 이어 붙이지 않고 완성된 문장으로 둔다(동적 SQL을 만들지 않음) */
+    private static final String[] DELETES = {
+        "delete from report.record_chain where rental_id = ?",
+        "delete from report.checkpoint_view where rental_id = ?",
+        "delete from report.manual_seal_log where rental_id = ?",
+        "delete from report.report_view where rental_id = ?",
+        "delete from report.report where rental_id = ?"
     };
 
     private final JdbcTemplate jdbc;
@@ -22,8 +27,8 @@ public class JdbcRecordPurgeStore implements RecordPurgeStore {
     @Override
     public int deleteRental(String rentalId) {
         int rows = 0;
-        for (String table : TABLES) {
-            rows += jdbc.update("delete from " + table + " where rental_id = ?", rentalId);
+        for (String delete : DELETES) {
+            rows += jdbc.update(delete, rentalId);
         }
         return rows;
     }
