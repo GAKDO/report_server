@@ -1,0 +1,4 @@
+# gitleaks 오탐(테스트 코드, 실제 비밀 아님). 커밋 cc85b22의 테스트에 있던 PEM 머리글 문자열과 시험용 검증 토큰 문자열을 키로 봤다.
+# 다음 커밋에서 문자열을 나눠 만들도록 고쳤고, 이력에 남은 두 건만 지문으로 제외한다.
+cc85b2204e33f6dfb7d7027b1e20ee91eead6ccb:src/test/java/com/gakdo/trace/report/support/TestKeys.java:private-key:17
+cc85b2204e33f6dfb7d7027b1e20ee91eead6ccb:src/test/java/com/gakdo/trace/report/record/ReportApiTest.java:generic-api-key:122

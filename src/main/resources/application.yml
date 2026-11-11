@@ -9,11 +9,89 @@ spring:
   threads:
     virtual:
       enabled: true
+  # PostgreSQL: DB trace, 이 서버는 report 스키마만 쓴다 (infra.env POSTGRES_*, trace-secrets DB_*)
+  datasource:
+    url: jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5432}/${POSTGRES_DB:trace}
+    username: ${DB_USERNAME:trace}
+    password: ${DB_PASSWORD:}
+  flyway:
+    schemas: report
+    default-schema: report
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate   # 스키마는 Flyway만 바꾼다
+    properties:
+      hibernate:
+        default_schema: report
+        jdbc:
+          time_zone: UTC
+  jackson:
+    deserialization:
+      fail-on-unknown-properties: true   # 계약의 additionalProperties: false — 모르는 필드는 400
+  # RabbitMQ: topic exchange trace.events (infra.env RABBITMQ_*, trace-secrets RABBITMQ_USERNAME·PASSWORD)
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    virtual-host: ${RABBITMQ_VHOST:/}
+    username: ${RABBITMQ_USERNAME:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
+    listener:
+      simple:
+        default-requeue-rejected: false   # 계속 실패한 메시지는 trace.dlx로
+        retry:
+          enabled: true
+          max-attempts: 3
+          initial-interval: 1s
+  # Redis: inspect-worker 진행률 구독만 쓴다 (infra.env REDIS_*, trace-secrets REDIS_PASSWORD)
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      database: ${REDIS_DATABASE:2}
+      password: ${REDIS_PASSWORD:}
+      timeout: 3s
+  # auth-server가 발급한 RS256 JWT를 JWKS로 검증한다
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          jwk-set-uri: ${AUTH_JWKS_URI:${AUTH_SERVER_URL:http://auth-server:8080}/.well-known/jwks.json}
 
 app:
   commit: ${APP_COMMIT:unknown}   # 이미지에 구운 커밋 SHA. /ping 응답에 실려 배포 확인에 쓴다
+  version: '@project.version@'
+  jwt:
+    issuer: trace
+  # 해시 체인 서명(Ed25519). PKCS#8 PEM을 base64 한 줄로: openssl genpkey -algorithm ed25519 | base64 -w0 (trace-secrets CHAIN_SIGNING_KEY)
+  chain:
+    signing-key: ${CHAIN_SIGNING_KEY:}
+    allow-ephemeral-key: ${CHAIN_ALLOW_EPHEMERAL_KEY:false}   # 키 없이 띄우는 개발·시험용. 재시작하면 이전 서명 검증이 실패한다
+    # 등급이 나온 뒤 진단을 기다리는 시간. 진단이 이미 왔으면 바로 봉인한다
+    diagnostics-wait: ${REPORT_SEAL_DIAGNOSTICS_WAIT:PT1M}
+    sweep-interval: ${REPORT_SEAL_SWEEP_INTERVAL:PT15S}
+  # inspect-worker 진행률(Redis 채널 <prefix>progress:<rentalId>) 구독. 끄면 이벤트 단계(20·60·80·100)만 보낸다
+  progress:
+    redis:
+      enabled: ${REPORT_PROGRESS_REDIS_ENABLED:false}
+      prefix: ${REDIS_KEY_PREFIX:trace:}
+  # 공개 검증 페이지 주소 = <WEB_PUBLIC_URL>/verify/<token>
+  web-public-url: ${WEB_PUBLIC_URL:http://localhost:5173}
+  # 봉인한 사진이 저장소에서 바뀌었는지 검증 때 다시 본다 (infra.env MINIO_ENDPOINT, trace-secrets MINIO_*)
+  storage:
+    endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
+    access-key: ${MINIO_ACCESS_KEY:}
+    secret-key: ${MINIO_SECRET_KEY:}
+    region: ${MINIO_REGION:us-east-1}
+    capture-bucket: ${MINIO_CAPTURE_BUCKET:trace-captures}
+  verify:
+    check-objects: ${REPORT_VERIFY_CHECK_OBJECTS:true}
+    cache-ttl: ${REPORT_VERIFY_CACHE_TTL:PT30S}   # 공개 검증이 저장소를 너무 자주 두드리지 않게
 
 management:
+  health:
+    redis:
+      enabled: false   # 진행률은 보조라 Redis가 잠깐 죽어도 report-server를 준비 안 됨으로 만들지 않는다
   endpoints:
     web:
       exposure:
