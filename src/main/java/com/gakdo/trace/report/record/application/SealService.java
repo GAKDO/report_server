@@ -125,7 +125,7 @@ public class SealService {
         }
         view.overrideGrade(grade);
         ChainRecord sealed = seal(view, type, grade, new SealPayload.Manual(adminId, reason), records);
-        manualLogs.save(new ManualSealLog(rentalId, checkpointId, type, grade, sealed.seq(), reason, adminId));
+        manualLogs.save(new ManualSealLog(checkpointId, reason, adminId));
         log.warn("수동 봉인: rentalId={} checkpointId={} type={} grade={} by={}", rentalId, checkpointId, type, grade,
                 adminId);
         return sealed;

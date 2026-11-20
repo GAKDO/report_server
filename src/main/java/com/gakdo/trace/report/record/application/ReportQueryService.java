@@ -4,7 +4,9 @@ import java.nio.charset.StandardCharsets;
 import java.time.OffsetDateTime;
 import java.util.Base64;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import org.springframework.beans.factory.annotation.Value;
@@ -47,7 +49,11 @@ public class ReportQueryService {
     public record SearchPage(List<SearchHit> items, String nextCursor) {
     }
 
-    public record ManualSeals(List<ManualSealLog> items, String nextCursor) {
+    /** 수동 봉인 사용 기록 한 줄과 그 시점의 체인 한 줄(렌탈·종류·등급·순번은 체인에서 읽는다). */
+    public record ManualSeal(ManualSealLog log, ChainRecord record) {
+    }
+
+    public record ManualSeals(List<ManualSeal> items, String nextCursor) {
     }
 
     private final CheckpointViewRepository views;
@@ -110,10 +116,19 @@ public class ReportQueryService {
         List<ManualSealLog> rows = cursor == null || cursor.isBlank() ? manualLogs.findAllByOrderByIdDesc(page)
                 : manualLogs.findByIdLessThanOrderByIdDesc(decodeCursor(cursor), page);
         if (rows.size() <= limit) {
-            return new ManualSeals(rows, null);
+            return new ManualSeals(withRecords(rows), null);
         }
         List<ManualSealLog> items = rows.subList(0, limit);
-        return new ManualSeals(List.copyOf(items), encodeCursor(items.get(items.size() - 1).id()));
+        return new ManualSeals(withRecords(items), encodeCursor(items.get(items.size() - 1).id()));
+    }
+
+    /** 기록마다 같은 시점의 체인 한 줄을 붙인다. 체인 줄은 FK로 늘 있다(V5 전 행이 어긋났다면 그 기록은 뺀다). */
+    private List<ManualSeal> withRecords(List<ManualSealLog> logs) {
+        Map<String, ChainRecord> byCheckpoint = new HashMap<>();
+        chain.findByCheckpointIdIn(logs.stream().map(ManualSealLog::checkpointId).toList())
+                .forEach(r -> byCheckpoint.put(r.checkpointId(), r));
+        return logs.stream().filter(l -> byCheckpoint.containsKey(l.checkpointId()))
+                .map(l -> new ManualSeal(l, byCheckpoint.get(l.checkpointId()))).toList();
     }
 
     /**

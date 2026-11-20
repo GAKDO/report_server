@@ -85,9 +85,11 @@ public final class ReportDtos {
     public record ManualSealItem(String rentalId, String checkpointId, String checkpointType, String grade, int seq,
             String reason, String sealedBy, OffsetDateTime sealedAt) {
 
-        static ManualSealItem of(ManualSealLog l) {
-            return new ManualSealItem(l.rentalId(), l.checkpointId(), l.checkpointType().name(), l.grade().name(),
-                    l.seq(), l.reason(), l.sealedBy(), l.createdAt());
+        static ManualSealItem of(ReportQueryService.ManualSeal s) {
+            ChainRecord r = s.record();
+            ManualSealLog l = s.log();
+            return new ManualSealItem(r.rentalId(), r.checkpointId(), r.checkpointType().name(), r.grade().name(),
+                    r.seq(), l.reason(), l.sealedBy(), l.createdAt());
         }
     }
 
