@@ -141,6 +141,7 @@ class ReportIntegrationTest {
 
     /** 시험 렌탈 지우기(trace.checkpoint.purged, 시리얼 TEST-): 렌탈의 체인·시점·리포트가 모두 사라져 타임라인이 404 */
     // 7) 시험 렌탈 지우기: 기기 일련번호가 TEST-로 시작하는 시험 렌탈이면 기록을 모두 지워 타임라인이 404가 된다.
+    // ※ 응답 코드: 404 = 찾을 수 없음(없는 주소나 데이터)
     private void checkTestPurge(String rental, String out) {
         send("trace.checkpoint.purged", envelope(rental, out) + ",\"checkpointType\":\"OUT\",\"deviceId\":\""
                 + PublicIds.next() + "\",\"serial\":\"TEST-SERIAL-1\"");
@@ -244,6 +245,7 @@ class ReportIntegrationTest {
     /** ── 반납: 파이프라인 없이 관리자 수동 봉인(사용 기록) ── */
     // 5) 반납 시점 수동 봉인: 집 PC가 꺼져 자동 검사를 못 한 경우 관리자가 사유를 적고 직접 봉인한다.
     // 체인 3번 기록이 되고, 같은 시점을 또 봉인하면 409. 수동 봉인 사용 기록에 누가 했는지 남는다.
+    // ※ 응답 코드: 409 = 지금 상태와 맞지 않아 거절(이미 있음·순서 어긋남 등)
     private void checkManualSeal(String rental, String ret) throws Exception {
         String sealUrl = "/api/v1/reports/rentals/" + rental + "/checkpoints/" + ret + "/seal";
         String body = "{\"checkpointType\":\"RET\",\"grade\":\"C\",\"reason\":\"집 PC 꺼짐, 육안 확인 후 봉인\"}";
@@ -260,6 +262,7 @@ class ReportIntegrationTest {
 
     /** 앞 시점(출고)이 없는 렌탈의 수령을 수동 봉인하면 409, 모르는 렌탈은 404 */
     // 6) 출고 봉인이 없는 렌탈의 수령을 먼저 봉인하려 하면 409(순서 위반), 없는 렌탈 조회는 404.
+    // ※ 응답 코드: 409 = 지금 상태와 맞지 않아 거절(이미 있음·순서 어긋남 등), 404 = 찾을 수 없음(없는 주소나 데이터)
     private void checkOrderViolationAndUnknownRental() throws Exception {
         String other = PublicIds.next();
         mvc.perform(post("/api/v1/reports/rentals/" + other + "/checkpoints/" + PublicIds.next() + "/seal").with(admin())

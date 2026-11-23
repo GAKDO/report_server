@@ -102,6 +102,8 @@ class ReportApiTest extends WebTestBase {
 
     // [상황] 남의 고객, QR 촬영 폰, 부스, 로그인 안 한 사람이 리포트를 열고, 관리자가 틀린 모양의 렌탈 번호로 연다.
     // [기대] 남의 고객 403(OUT_OF_SCOPE), 촬영 폰·부스 403, 로그인 없음 401, 틀린 번호 400.
+    //        ※ 응답 코드: 403 = 권한 없음(누구인지는 알지만 허락되지 않은 일), 401 = 로그인 필요(토큰이 없거나 만료·위조됨),
+    //          400 = 요청 내용이 형식에 맞지 않음
     @Test
     @DisplayName("타임라인: 남의 렌탈은 403 OUT_OF_SCOPE, 촬영 JWT·부스는 403 FORBIDDEN, 토큰 없으면 401")
     void timelineScope() throws Exception {
@@ -120,6 +122,7 @@ class ReportApiTest extends WebTestBase {
 
     // [상황] 관리자와 고객이 체인 전체(서명·이전 해시까지)를 연다.
     // [기대] 관리자만 볼 수 있고 고객은 403.
+    //        ※ 응답 코드: 403 = 권한 없음(누구인지는 알지만 허락되지 않은 일)
     @Test
     @DisplayName("체인 전체는 관리자만: 서명·이전 해시까지 보이고 고객은 403")
     void chainIsAdminOnly() throws Exception {
@@ -137,6 +140,7 @@ class ReportApiTest extends WebTestBase {
     // [상황] 누구나 QR로 여는 공개 검증 페이지를 부른다. 없는 검증 번호, 주소 꼼수(../), 16진수가 아닌 값도 넣는다.
     // [기대] 체인 온전 여부·기종·시점·등급·지문만 주고 서명·시점 번호·렌탈 번호는 없다.
     //        없는 번호는 404, 꼼수·틀린 값도 4xx로 막는다.
+    //        ※ 응답 코드: 404 = 찾을 수 없음(없는 주소나 데이터), 4xx = 요청 쪽 문제로 거절(400번대 오류)
     @Test
     @DisplayName("공개 검증은 로그인 없이 등급·시점·지문·서명 시각만 주고, 서명·사진·렌탈 ID는 없다")
     void publicVerifyHasNoDetails() throws Exception {
@@ -163,6 +167,8 @@ class ReportApiTest extends WebTestBase {
     //        XML로 답을 달라 하고, 없는 등급 E를 넣고, 이미 봉인된 시점을 다시 봉인한다.
     // [기대] 관리자 정상 요청은 201. 고객 403, 사유 5자 미만·공백뿐 400, XML 4xx, 등급 E 400,
     //        이미 봉인이면 409 RECORD_ALREADY_SEALED.
+    //        ※ 응답 코드: 201 = 새로 만들어짐, 403 = 권한 없음(누구인지는 알지만 허락되지 않은 일), 400 = 요청 내용이 형식에 맞지 않음,
+    //          4xx = 요청 쪽 문제로 거절(400번대 오류), 409 = 지금 상태와 맞지 않아 거절(이미 있음·순서 어긋남 등)
     @Test
     @DisplayName("수동 봉인: 관리자만, 사유 5자 이상, 이미 봉인이면 409 RECORD_ALREADY_SEALED")
     void manualSeal() throws Exception {
@@ -209,6 +215,7 @@ class ReportApiTest extends WebTestBase {
 
     // [상황] 관리자가 일련번호 앞부분 "C02"로 기록을 검색한다. 한 글자 검색, 고객 검색도 해 본다.
     // [기대] 일련번호·체인 상태가 담긴 결과를 준다. 한 글자는 400, 고객은 403.
+    //        ※ 응답 코드: 400 = 요청 내용이 형식에 맞지 않음, 403 = 권한 없음(누구인지는 알지만 허락되지 않은 일)
     @Test
     @DisplayName("기록 검색은 관리자만, 검색어 2~64자, 결과는 계약 ReportSearchPage 모양")
     void searchReports() throws Exception {

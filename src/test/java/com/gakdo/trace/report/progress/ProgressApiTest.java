@@ -113,6 +113,7 @@ class ProgressApiTest extends WebTestBase {
 
     // [상황] 남의 렌탈 진행률을 고객·촬영 JWT로 열고, 부스 토큰과 로그인 없이도 열어 본다.
     // [기대] 남의 렌탈은 403(OUT_OF_SCOPE), 부스는 403, 로그인 없으면 401.
+    //        ※ 응답 코드: 403 = 권한 없음(누구인지는 알지만 허락되지 않은 일), 401 = 로그인 필요(토큰이 없거나 만료·위조됨)
     @Test
     @DisplayName("다른 사람 렌탈은 403 OUT_OF_SCOPE, 다른 렌탈의 촬영 JWT도 403, 부스는 403, 토큰 없으면 401")
     void scopeIsChecked() throws Exception {
