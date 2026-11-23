@@ -1,3 +1,5 @@
+// 테스트 도구(테스트 자체는 아님): 체인 서명용 Ed25519 열쇠를 실행할 때마다 새로 만든다(운영 열쇠와 무관).
+
 package com.gakdo.trace.report.support;
 
 import java.nio.charset.StandardCharsets;

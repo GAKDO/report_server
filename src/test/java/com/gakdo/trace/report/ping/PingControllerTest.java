@@ -1,3 +1,5 @@
+// 이 파일이 확인하는 것: report-server 점검 주소(/api/v1/reports/ping).
+
 package com.gakdo.trace.report.ping;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -18,6 +20,8 @@ class PingControllerTest extends WebTestBase {
     @Autowired
     private MockMvc mockMvc;
 
+    // [상황] 로그인 없이 점검 주소를 부른다.
+    // [기대] 200과 서비스 이름 report-server·버전·상태 ok·배포 커밋을 돌려준다.
     @Test
     @DisplayName("/api/v1/reports/ping은 토큰 없이 200, 계약 PingResponse(service·version·commit)")
     void ping() throws Exception {

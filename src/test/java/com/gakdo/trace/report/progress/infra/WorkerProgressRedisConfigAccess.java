@@ -1,3 +1,5 @@
+// 테스트 도구(테스트 자체는 아님): 패키지 안에 숨겨진 Redis 리스너를 다른 패키지의 테스트에서 만들 수 있게 열어 준다.
+
 package com.gakdo.trace.report.progress.infra;
 
 import org.springframework.data.redis.connection.MessageListener;

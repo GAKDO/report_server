@@ -1,3 +1,10 @@
+// 이 파일이 확인하는 것: report-server(렌탈 기록·봉인·검증 서버)의 처음부터 끝까지 흐름 한 번.
+// TRACE는 출고(OUT)·수령(RCV)·반납(RET) 시점마다 촬영·검사가 끝나면 그 결과를 "봉인"한다.
+// 봉인 = 등급·사진 지문(SHA-256)을 묶어 서명하고, 앞 시점 기록의 해시에 이어 붙이는 것(해시 체인).
+// 그래서 나중에 사진 한 장이나 등급 하나만 몰래 바꿔도 "검증 실패"로 드러난다.
+// 진짜 DB(PostgreSQL)·메시지 큐(RabbitMQ)·사진 저장소(S3 호환)를 Docker로 띄워 시험하므로,
+// Docker가 없는 곳(Claude 세션)에서는 건너뛰고 GitHub Actions에서만 돈다.
+
 package com.gakdo.trace.report;
 
 import static com.gakdo.trace.report.support.TestJwts.admin;
@@ -101,6 +108,14 @@ class ReportIntegrationTest {
 
     private final Random random = new Random(11);
 
+    // [상황] 렌탈 하나에 대해 아래 순서를 차례로 진행한다(각 단계는 아래 도우미 메서드).
+    //   1) 출고: 시점 시작·진단·사진 업로드·등급 이벤트가 오면 바로 봉인되고 타임라인에 보인다.
+    //   2) 수령: 진단 없이 등급만 오면 잠시 기다렸다가 봉인되고, 출고 기록에 이어진다.
+    //   3) 공개 검증 페이지는 등급·지문만 보여 주고 렌탈 번호·사진 ID는 숨긴다.
+    //   4) 저장소의 수령 사진 한 장을 바꾸면 검증이 실패하고, 되돌리면 다시 통과한다.
+    //   5) 반납: 관리자가 직접 봉인(수동 봉인)하면 기록이 남고, 두 번 봉인은 막힌다.
+    //   6) 순서가 틀린 봉인·모르는 렌탈은 거절한다. 7) 시험용(TEST-) 렌탈은 통째로 지울 수 있다.
+    // [기대] 모든 단계가 위 설명대로 동작한다.
     @Test
     @DisplayName("이벤트로 시점을 봉인해 체인을 잇고, 공개 검증은 등급·지문만 보이며, 사진 한 장을 바꾸면 검증이 실패하고, 수동 봉인은 기록이 남는다")
     void endToEnd() throws Exception {
@@ -125,6 +140,7 @@ class ReportIntegrationTest {
     }
 
     /** 시험 렌탈 지우기(trace.checkpoint.purged, 시리얼 TEST-): 렌탈의 체인·시점·리포트가 모두 사라져 타임라인이 404 */
+    // 7) 시험 렌탈 지우기: 기기 일련번호가 TEST-로 시작하는 시험 렌탈이면 기록을 모두 지워 타임라인이 404가 된다.
     private void checkTestPurge(String rental, String out) {
         send("trace.checkpoint.purged", envelope(rental, out) + ",\"checkpointType\":\"OUT\",\"deviceId\":\""
                 + PublicIds.next() + "\",\"serial\":\"TEST-SERIAL-1\"");
@@ -143,6 +159,9 @@ class ReportIntegrationTest {
     }
 
     /** ── 출고: 시점 시작(기종, 1.1)·진단(배터리 최대 용량, 1.1)이 먼저 오고, 업로드·등급(핀, 1.1)이 오면 바로 봉인 ── */
+    // 1) 출고 시점: 시점 시작(기종 맥북 에어 M2)·진단(배터리 최대 용량 91.2%)·사진 2장·등급 A(흠집 핀 1개)
+    // 이벤트를 보내면 체인 1번 기록으로 봉인된다. 같은 이벤트가 또 와도 두 번 봉인하지 않는다.
+    // 타임라인에는 봉인됨·기종·핀 좌표·배터리 용량·공개 검증 주소(gakdo.site/verify/...)가 보인다.
     private OutSealed sealOutAndCheckTimeline(String rental, String out) throws Exception {
         send("trace.checkpoint.started", envelope11(rental, out) + ",\"checkpointType\":\"OUT\",\"deviceId\":\""
                 + PublicIds.next() + "\",\"serial\":\"TEST-SERIAL-1\",\"modelCode\":\"MBA13-M2\""
@@ -181,6 +200,8 @@ class ReportIntegrationTest {
     }
 
     /** ── 수령: 진단 없이 등급만 → 기다렸다가(스케줄러가 부르는 것과 같게) 봉인, 앞 기록 해시에 잇는다 ── */
+    // 2) 수령 시점: 진단 없이 등급(B)만 오면 진단을 기다리느라 바로 봉인하지 않는다.
+    // 대기 시간이 지나면 봉인되어 체인 2번 기록이 되고, 앞 기록(출고)의 해시에 이어진다.
     private List<String[]> sealRcvAfterWaiting(String rental, String rcv, JsonNode sealed1) throws Exception {
         List<String[]> rcvPhotos = uploadPhotos(rental, rcv, 2);
         send("trace.checkpoint.graded", envelope(rental, rcv) + gradedBody("RCV", "B", rcvPhotos));
@@ -196,6 +217,8 @@ class ReportIntegrationTest {
     }
 
     /** 공개 검증: 등급·시점·지문·서명 시각만 */
+    // 3) 공개 검증(로그인 없이 누구나 QR로 보는 페이지): 체인이 온전하고 기종 이름·시점별 등급이 보인다.
+    // 서명 값, 렌탈 번호, 사진 ID 같은 내부 정보는 응답 어디에도 없다.
     private void checkPublicVerification(String verifyPath, String rental, String outPhotoId) throws Exception {
         JsonNode verify = json.readTree(mvc.perform(get(verifyPath)).andExpect(status().isOk()).andReturn()
                 .getResponse().getContentAsString(StandardCharsets.UTF_8));
@@ -207,6 +230,8 @@ class ReportIntegrationTest {
     }
 
     /** ── 사진 한 장을 바꾸면 검증이 실패한다(되돌리면 다시 맞다) ── */
+    // 4) 저장소의 사진 한 장을 다른 파일로 바꾸면 공개 검증이 실패하고 타임라인 체인 상태가 BROKEN이 된다.
+    // 원래 사진으로 되돌리면 다시 온전하다고 나온다.
     private void checkChangedPhotoBreaksChain(String rental, String verifyPath, String[] photo) throws Exception {
         s3.putObject(b -> b.bucket(BUCKET).key(photo[2]), RequestBody.fromBytes("바꾼 사진".getBytes()));
         JsonNode broken = json.readTree(mvc.perform(get(verifyPath)).andReturn().getResponse().getContentAsString());
@@ -217,6 +242,8 @@ class ReportIntegrationTest {
     }
 
     /** ── 반납: 파이프라인 없이 관리자 수동 봉인(사용 기록) ── */
+    // 5) 반납 시점 수동 봉인: 집 PC가 꺼져 자동 검사를 못 한 경우 관리자가 사유를 적고 직접 봉인한다.
+    // 체인 3번 기록이 되고, 같은 시점을 또 봉인하면 409. 수동 봉인 사용 기록에 누가 했는지 남는다.
     private void checkManualSeal(String rental, String ret) throws Exception {
         String sealUrl = "/api/v1/reports/rentals/" + rental + "/checkpoints/" + ret + "/seal";
         String body = "{\"checkpointType\":\"RET\",\"grade\":\"C\",\"reason\":\"집 PC 꺼짐, 육안 확인 후 봉인\"}";
@@ -232,6 +259,7 @@ class ReportIntegrationTest {
     }
 
     /** 앞 시점(출고)이 없는 렌탈의 수령을 수동 봉인하면 409, 모르는 렌탈은 404 */
+    // 6) 출고 봉인이 없는 렌탈의 수령을 먼저 봉인하려 하면 409(순서 위반), 없는 렌탈 조회는 404.
     private void checkOrderViolationAndUnknownRental() throws Exception {
         String other = PublicIds.next();
         mvc.perform(post("/api/v1/reports/rentals/" + other + "/checkpoints/" + PublicIds.next() + "/seal").with(admin())
@@ -246,6 +274,7 @@ class ReportIntegrationTest {
     private final java.util.Map<String, byte[]> files = new java.util.HashMap<>();
 
     /** 사진을 저장소에 올리고 trace.capture.uploaded를 보낸다. [photoId, sha256, objectKey] */
+    // 도우미: 사진(임의 바이트)을 저장소에 올리고 "사진 업로드됨" 이벤트를 보낸다.
     private List<String[]> uploadPhotos(String rental, String checkpoint, int count) throws Exception {
         String setId = PublicIds.next();
         List<String[]> photos = new ArrayList<>();
@@ -284,6 +313,7 @@ class ReportIntegrationTest {
                 + items + "]";
     }
 
+    // 도우미: 모든 이벤트에 공통으로 붙는 봉투(이벤트 번호·발생 시각·렌탈·시점).
     private static String envelope(String rental, String checkpoint) {
         return "{\"schemaVersion\":\"1.0\",\"eventId\":\"" + PublicIds.next() + "\",\"occurredAt\":\"2026-11-12T09:00:00+09:00\""
                 + ",\"rentalId\":\"" + rental + "\",\"checkpointId\":\"" + checkpoint + "\"";
@@ -299,6 +329,7 @@ class ReportIntegrationTest {
         rabbit.send("trace.events", routingKey, message);
     }
 
+    // 도우미: "봉인됨" 이벤트가 나올 때까지 최대 15초 기다려 받는다.
     private JsonNode receiveSealed() throws Exception {
         Message m = rabbit.receive("test.record.sealed", 15_000);
         assertThat(m).as("trace.record.sealed").isNotNull();
