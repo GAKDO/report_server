@@ -39,6 +39,8 @@ curl http://localhost:8080/api/v1/reports/ping
 
 줄 커버리지 40% 미만이면 실패합니다(블로그와 같은 기준).
 
+통합 테스트 `ReportIntegrationTest`(실제 PostgreSQL·RabbitMQ·S3 호환 저장소로 이벤트 → 봉인 → 공개 검증 → 사진 바꿔치기 적발)는 Docker가 있어야 돕니다. Docker가 없으면 건너뜁니다(`@Testcontainers(disabledWithoutDocker = true)`, 실패가 아님). `TRACE_IT_LOCAL` 로컬 DB 모드는 없습니다. GitHub Actions에서는 모두 돌고, 나머지 단위·컨트롤러 테스트는 Docker 없이 늘 돕니다. 테스트마다 한국어 이름(`@DisplayName` 또는 한국어 메서드 이름)과 `[상황]`·`[기대]` 주석이 달려 있습니다.
+
 ## CI/CD
 
 | 워크플로 | 언제 | 하는 일 |
