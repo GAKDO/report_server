@@ -1,3 +1,6 @@
+// 이 파일이 확인하는 것: 시험 렌탈 지우기의 안전장치.
+// 이벤트에 적힌 일련번호만 믿지 않고, report-server에 "처음 저장된" 기기 일련번호가 TEST-일 때만 지운다.
+
 package com.gakdo.trace.report.record;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -34,6 +37,8 @@ class RecordPurgeGuardTest {
             mock(CheckpointViewRepository.class), mock(SealService.class), reports, mock(ProgressNotifier.class),
             purges);
 
+    // [상황] 지움 이벤트는 TEST-라고 하지만 저장된 일련번호는 실제 맥북(C02...)이다.
+    // [기대] 봉인 기록을 지우지 않는다.
     @Test
     @DisplayName("이벤트 시리얼이 TEST-여도 저장된 시리얼이 실제 기기면 봉인 기록을 지우지 않는다")
     void realSerialIsKept() throws Exception {
@@ -42,6 +47,8 @@ class RecordPurgeGuardTest {
         verify(purges, never()).deleteRental(anyString());
     }
 
+    // [상황] 저장된 일련번호가 TEST-0002다.
+    // [기대] 그 렌탈 기록을 지운다.
     @Test
     @DisplayName("저장된 시리얼이 TEST-면 지운다")
     void testSerialIsPurged() throws Exception {
@@ -50,6 +57,8 @@ class RecordPurgeGuardTest {
         assertThat(ingest.purged(envelope())).isTrue();
     }
 
+    // [상황] 리포트는 있는데 저장된 일련번호를 아직 모른다.
+    // [기대] 확실하지 않으니 지우지 않는다.
     @Test
     @DisplayName("리포트는 있는데 저장된 시리얼을 아직 모르면 지우지 않는다")
     void unknownSerialIsKept() throws Exception {
@@ -58,6 +67,8 @@ class RecordPurgeGuardTest {
         verify(purges, never()).deleteRental(anyString());
     }
 
+    // [상황] 실제 일련번호가 적힌 뒤, 나중에 온 시점 시작 이벤트가 TEST- 일련번호를 보낸다.
+    // [기대] 처음 적힌 실제 일련번호가 바뀌지 않아, 이 꼼수로 실제 기록을 지울 수 없다.
     @Test
     @DisplayName("뒤에 온 시점 시작 이벤트가 TEST- 시리얼을 보내도 처음 적힌 실제 시리얼은 바뀌지 않는다")
     void laterStartedCannotRewriteSerial() throws Exception {

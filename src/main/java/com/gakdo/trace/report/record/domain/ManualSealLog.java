@@ -4,13 +4,8 @@ import java.time.OffsetDateTime;
 
 import com.gakdo.trace.report.common.infra.Times;
 
-import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.type.SqlTypes;
-
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -27,23 +22,12 @@ public class ManualSealLog {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "rental_id", nullable = false, length = 21)
-    private String rentalId;
-
+    /**
+     * 봉인한 시점. 렌탈·시점 종류·등급·순번은 같은 시점의 체인 한 줄(record_chain)에 이미 있어 여기에 다시 두지 않는다(V5).
+     * FK: report.record_chain(checkpoint_id)
+     */
     @Column(name = "checkpoint_id", nullable = false, length = 21)
     private String checkpointId;
-
-    @Enumerated(EnumType.STRING)
-    @Column(name = "checkpoint_type", nullable = false, length = 3)
-    private CheckpointType checkpointType;
-
-    @Enumerated(EnumType.STRING)
-    @JdbcTypeCode(SqlTypes.CHAR)
-    @Column(nullable = false, length = 1, columnDefinition = "char(1)")
-    private Grade grade;
-
-    @Column(nullable = false)
-    private int seq;
 
     @Column(nullable = false, length = 300)
     private String reason;
@@ -60,13 +44,8 @@ public class ManualSealLog {
     protected ManualSealLog() {
     }
 
-    public ManualSealLog(String rentalId, String checkpointId, CheckpointType checkpointType, Grade grade, int seq,
-            String reason, String sealedBy) {
-        this.rentalId = rentalId;
+    public ManualSealLog(String checkpointId, String reason, String sealedBy) {
         this.checkpointId = checkpointId;
-        this.checkpointType = checkpointType;
-        this.grade = grade;
-        this.seq = seq;
         this.reason = reason;
         this.sealedBy = sealedBy;
     }
@@ -83,11 +62,7 @@ public class ManualSealLog {
     }
 
     public Long id() { return id; }
-    public String rentalId() { return rentalId; }
     public String checkpointId() { return checkpointId; }
-    public CheckpointType checkpointType() { return checkpointType; }
-    public Grade grade() { return grade; }
-    public int seq() { return seq; }
     public String reason() { return reason; }
     public String sealedBy() { return sealedBy; }
     public OffsetDateTime createdAt() { return createdAt; }

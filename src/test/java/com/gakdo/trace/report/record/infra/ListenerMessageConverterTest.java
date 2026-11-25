@@ -1,3 +1,6 @@
+// 이 파일이 확인하는 것: 다른 자바 서버가 보낸 이벤트를 메시지 변환 문제 없이 받는지.
+// 자바 서버는 이벤트에 "보낸 쪽 클래스 이름" 헤더를 붙이는데, report-server에는 그 클래스가 없다.
+
 package com.gakdo.trace.report.record.infra;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -35,6 +38,8 @@ class ListenerMessageConverterTest {
         }
     }
 
+    // [상황] 이 서버에 없는 클래스 이름이 붙은 등급 이벤트가 온다.
+    // [기대] 운영 설정의 변환기는 클래스 이름을 무시하고 JSON 그대로 리스너에 넘긴다.
     @Test
     void 다른_서버의_자바_클래스_이름이_붙은_이벤트도_리스너가_받는다() throws Exception {
         SimpleRabbitListenerContainerFactory factory = new AmqpConfig().rabbitListenerContainerFactory(
@@ -47,6 +52,8 @@ class ListenerMessageConverterTest {
         assertThat(new String(recorder.received.getBody(), StandardCharsets.UTF_8)).contains("\"rentalId\"");
     }
 
+    // [상황] 같은 이벤트를 스프링 기본 JSON 변환기로 받아 본다(비교용).
+    // [기대] 클래스를 찾다가 실패해 리스너가 받지 못한다. 즉 운영 설정이 꼭 필요하다는 증거.
     @Test
     void 기본_JSON_변환기라면_보낸_쪽_클래스를_찾다가_실패한다() throws Exception {
         Recorder recorder = new Recorder();

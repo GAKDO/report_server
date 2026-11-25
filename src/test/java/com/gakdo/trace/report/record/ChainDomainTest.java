@@ -1,3 +1,7 @@
+// 이 파일이 확인하는 것: 해시 체인(봉인 기록을 줄줄이 잇는 위조 방지 장치)의 계산·검증 규칙.
+// 기록마다 "봉인 내용 해시 + 앞 기록 해시 + 서명(Ed25519)"이 있어, 무엇 하나 바뀌면 어디서 깨졌는지 찾는다.
+// 테스트용 서명 열쇠는 실행할 때마다 새로 만든다(운영 열쇠와 무관).
+
 package com.gakdo.trace.report.record;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -46,6 +50,9 @@ class ChainDomainTest {
     private final ObjectMapper mapper = new ObjectMapper();
     private final ChainSigner signer = Ed25519ChainSigner.fromConfig(TestKeys.ed25519PemBase64(), false);
 
+    // [상황] 내용은 같고 칸 순서·띄어쓰기만 다른 JSON 두 개, 그리고 소수(1.5)가 든 JSON.
+    // [기대] 둘은 같은 글자로 정리되어 해시도 같다(DB에 저장했다 읽어도 검증이 깨지지 않게).
+    //        소수는 컴퓨터마다 표현이 달라질 수 있어 아예 받지 않는다.
     @Test
     @DisplayName("정규화 JSON은 키 순서·공백이 달라도 같은 글자열이라 jsonb로 저장했다 읽어도 해시가 같다")
     void canonicalJsonIgnoresKeyOrderAndWhitespace() throws Exception {
@@ -58,6 +65,8 @@ class ChainDomainTest {
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
+    // [상황] 같은 사진 두 장을 순서만 바꿔 넣은 경우와, 사진 한 장의 지문이 다른 경우.
+    // [기대] 순서만 다르면 해시가 같고, 사진이 하나라도 다르면 해시가 달라진다.
     @Test
     @DisplayName("봉인 내용은 사진 순서가 달라도 같은 해시이고, 사진 해시 하나가 바뀌면 다른 해시다")
     void payloadHashDependsOnPhotoHashesNotOrder() {
@@ -67,6 +76,8 @@ class ChainDomainTest {
         assertThat(one).isEqualTo(swapped).isNotEqualTo(changed);
     }
 
+    // [상황] 출고·수령 2개 기록 체인에서, 저장소의 수령 사진 한 장을 다른 파일로 바꾼다. 그다음 아예 지운다.
+    // [기대] 바꾸면 2번 기록에서 검증 실패, 지워도 실패.
     @Test
     @DisplayName("사진 한 장을 바꾸면 검증이 실패한다(저장소 해시가 봉인 때와 다름)")
     void changedPhotoBreaksVerification() {
@@ -85,6 +96,8 @@ class ChainDomainTest {
         assertThat(ChainCheck.run(chain, signer, mapper, keys, k -> Optional.ofNullable(store.get(k))).valid()).isFalse();
     }
 
+    // [상황] 2번 기록의 등급을 B→A로 고치거나, 앞 기록 해시를 바꾸거나, 다른 열쇠로 검증하거나, 1번 기록을 빼 본다.
+    // [기대] 각각 "2번에서 깨짐", "이전 기록" 불일치, "서명" 불일치, "순번" 오류로 찾아낸다.
     @Test
     @DisplayName("봉인 내용·이전 해시·서명 중 하나라도 고치면 그 seq에서 검증이 실패한다")
     void tamperedRecordsAreDetected() {
@@ -107,6 +120,9 @@ class ChainDomainTest {
         assertThat(ChainCheck.run(List.of(second), signer, mapper, Map.of(), null).reason()).contains("순번");
     }
 
+    // [상황] 서명 열쇠를 base64 한 줄 형식과 PEM 원문 형식으로 각각 넣고, 빈 값·엉뚱한 값도 넣어 본다.
+    // [기대] 두 형식 모두 같은 열쇠로 읽혀 서로 서명을 확인할 수 있다. 다른 내용·깨진 서명은 거짓.
+    //        열쇠가 비었거나 엉터리면 서버가 켜질 때 CHAIN_SIGNING_KEY 오류로 멈춘다.
     @Test
     @DisplayName("서명 키는 PKCS#8 PEM의 base64와 PEM 그대로 둘 다 받고, 비어 있으면 임시 키를 허락할 때만 뜬다")
     void signingKeyFormats() {
@@ -125,6 +141,9 @@ class ChainDomainTest {
                 .isInstanceOf(IllegalStateException.class);
     }
 
+    // [상황] 출고 시점에 등급 A가 먼저 오고 업로드가 늦게 온다. 봉인 뒤 등급 D가 또 온다.
+    // [기대] 상태는 앞으로만 가서 "등급 매김"을 유지한다. 시점 종류는 처음 정한 출고에서 바뀌지 않는다.
+    //        봉인된 뒤 들어온 등급 D는 무시되어 A·봉인 상태 그대로다.
     @Test
     @DisplayName("시점 상태는 앞으로만 가고, 봉인된 시점은 늦게 온 업로드·등급으로 바뀌지 않는다")
     void checkpointViewOnlyMovesForward() {
@@ -142,6 +161,7 @@ class ChainDomainTest {
 
     // ── 도우미 ──
 
+    // 도우미: 수령 시점 봉인 내용(등급 B, 새 흠집 1개, 판정 못 한 면 2개, 사진 목록)을 만든다.
     private ObjectNode payload(List<HashRef> photos) {
         CheckpointView view = new CheckpointView(RENTAL, RCV_CP);
         view.recordGrade("Z4U03wInx137yk13jDsmn", Grade.B, "grade-rule-1.0", List.of("fBSvifsp4FWaM07ql1SET"),
@@ -149,6 +169,7 @@ class ChainDomainTest {
         return SealPayload.of(view, CheckpointType.RCV, Grade.B, null);
     }
 
+    // 도우미: 출고(1번, 등급 A) → 수령(2번, 등급 B) 두 기록이 이어진 정상 체인을 만든다.
     private List<ChainRecord> twoRecordChain() {
         List<ChainRecord> records = new ArrayList<>();
         records.add(chainRecord(1, OUT_CP, CheckpointType.OUT, Grade.A, List.of(new HashRef(P1, H1)), null));

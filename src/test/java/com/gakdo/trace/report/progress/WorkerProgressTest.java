@@ -1,3 +1,6 @@
+// 이 파일이 확인하는 것: 집 PC의 검사 워커(inspect-worker)가 보내는 "사진 정합 진행" 소식을 진행률로 바꾸는 부분.
+// 워커는 사진을 기준 모양에 맞춰 펴는(정합) 동안 Redis 채널로 "12장 중 몇 장 끝"을 알린다.
+
 package com.gakdo.trace.report.progress;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -42,6 +45,8 @@ class WorkerProgressTest {
         return view;
     }
 
+    // [상황] 업로드 뒤 워커가 "12장 중 0장" 그리고 "12장 중 1장 정합 끝"을 보낸다.
+    // [기대] 0장일 때는 알리지 않고, 1장이 끝나면 "정합 40%"를 한 번 알린다.
     @Test
     @DisplayName("업로드 뒤 워커가 사진 한 장을 정합하면 ALIGNED 40%를 한 번 알린다")
     void alignedAfterFirstPhoto() {
@@ -54,6 +59,8 @@ class WorkerProgressTest {
         assertThat(sent.getValue().stage().percent()).isEqualTo(40);
     }
 
+    // [상황] 이미 검사 완료된 시점에 정합 소식이 늦게 오거나, 다른 렌탈 이름으로 소식이 온다.
+    // [기대] 단계를 되돌리지 않고 아무 알림도 보내지 않는다.
     @Test
     @DisplayName("검사 완료가 먼저 왔거나 다른 렌탈의 시점이면 정합 진행으로 단계를 되돌리지 않는다")
     void neverRegresses() {
@@ -67,6 +74,8 @@ class WorkerProgressTest {
         verify(events, never()).publishEvent(any(Object.class));
     }
 
+    // [상황] Redis 채널 trace:progress:{렌탈}로 깨진 글자와 정상 메시지(모르는 칸 포함)가 온다.
+    // [기대] 깨진 메시지는 무시하고, 정상 메시지는 진행률 알림으로 바꾼다.
     @Test
     @DisplayName("Redis 채널 trace:progress:{rentalId}의 메시지를 읽고, 깨진 메시지는 무시한다")
     void redisChannel() {
